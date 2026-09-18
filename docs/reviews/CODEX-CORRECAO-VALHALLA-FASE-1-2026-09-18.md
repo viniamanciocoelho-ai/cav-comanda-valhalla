@@ -10,6 +10,8 @@ migrations remotas, deploy ou alteração de produção.
 
 Branch de entrega: `feat/persistencia-notinha-pin-cardapio`
 
+URL da branch publicada: https://github.com/viniamanciocoelho-ai/cav-comanda-valhalla/tree/feat/persistencia-notinha-pin-cardapio
+
 ## Problemas encontrados
 
 1. O estado operacional era somente React e era perdido ao recarregar a página.
@@ -120,6 +122,9 @@ Principais arquivos:
 - `d928506` — `feat: adicionar persistencia e operacao da fase 1`
 - `8d5f2ce` — `docs: registrar auditoria e limites da fase 1`
 - `8f34f25` — `fix: sincronizar cardapio real e lint do CRM`
+- `e8049ac` — `docs: atualizar relatorio final da fase 1`
+
+Commit publicado: `e8049ac35551da27a8f2ad2cb798b9f5a7c2d9ef`
 
 ## Decisões pendentes
 
@@ -134,5 +139,4 @@ Principais arquivos:
 pronto para produção fiscal até que impressora, PINs de produção e integrações fiscais sejam
 homologados.
 
-O branch está pronto para publicação. A `main` não foi alterada, não houve merge, deploy ou
-migration remota.
+A branch foi publicada. A `main` não foi alterada, não houve merge, deploy ou migration remota.
