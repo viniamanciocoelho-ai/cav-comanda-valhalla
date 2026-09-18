@@ -94,7 +94,7 @@ do artefato final.
 
 ## Entrega
 
-Commit local: será registrado após a revisão final do diff.
+Commit local: `d928506` (`feat: adicionar persistencia e operacao da fase 1`).
 
 Não houve push, merge, deploy, alteração de produção ou migration remota.
 
