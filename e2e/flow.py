@@ -142,18 +142,18 @@ with sync_playwright() as p:
     page.click('[data-testid="adicionar-item"]')
     page.wait_for_selector('[data-testid="add-m1"]')
     page.click('[data-testid="destinatario-Sigurd"]')
-    page.click('[data-testid="add-m1"]')  # Chopp Pilsen 13,00
-    page.click('[data-testid="categoria-Petiscos"]')
+    page.click('[data-testid="add-m1"]')  # CHOOP PIL 500ML 15,00
+    page.click('[data-testid="categoria-Porções"]')
     page.wait_for_timeout(250)
-    page.click('[data-testid="add-m7"]')  # Batata com bacon 32,00
+    page.click('[data-testid="add-m7"]')  # BATATA COM CHEDDAR E BACON 28,00
     page.click('[data-testid="destinatario-Compartilhado"]')
-    page.click('[data-testid="add-m9"]')  # Asas de Valquíria 38,00 compartilhado
+    page.click('[data-testid="add-m9"]')  # PORÇ. TUL. TRAD 20,00 compartilhado
     shot(page, "03-cardapio")
     page.click('[data-testid="concluir-cardapio"]')
     page.wait_for_timeout(400)
 
     total_txt = page.inner_text('[data-testid="total-mesa"]')
-    esperado = (13 + 32 + 38) * 1.1
+    esperado = (15 + 28 + 20) * 1.1
     checar(
         abs(dinheiro(total_txt) - esperado) < 0.02,
         f"total da mesa com serviço 10% correto ({total_txt} ~ {esperado:.2f})",
@@ -187,13 +187,13 @@ with sync_playwright() as p:
     checar(tem(texto_m3, "03"), "produção mostra a mesa de origem")
     checar(tem(texto_m3, "Sigurd"), "produção identifica a pessoa do item")
     checar(tem(texto_m3, "Rafael"), "produção identifica o garçom responsável")
-    checar(tem(texto_m3, "Asas de Valquíria"), "item compartilhado também chegou na produção")
+    checar(tem(texto_m3, "PORÇ. TUL. TRAD"), "item compartilhado também chegou na produção")
 
     # duplicidade: o Chopp lançado uma vez deve aparecer uma única vez nas fichas da mesa 3
-    ocorrencias = contar(texto_m3, "Chopp Pilsen 500 ml")
+    ocorrencias = contar(texto_m3, "CHOOP PIL 500ML")
     checar(
         ocorrencias == 1,
-        f"nenhum item duplicado por duplo clique (Chopp Pilsen aparece {ocorrencias}x na mesa 3)",
+        f"nenhum item duplicado por duplo clique (CHOOP PIL aparece {ocorrencias}x na mesa 3)",
     )
     # e o total de fichas da mesa 3 não pode dobrar: no máximo uma por destino (bar + cozinha)
     checar(fichas_m3.count() <= 2, f"envio não duplicou fichas (mesa 3 tem {fichas_m3.count()})")

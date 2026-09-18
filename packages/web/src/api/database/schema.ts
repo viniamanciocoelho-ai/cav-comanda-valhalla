@@ -210,7 +210,14 @@ export const cardapio = sqliteTable(
     precoCentavos: integer("preco_centavos").notNull(),
     destinoProducao: text("destino_producao", { enum: ["cozinha", "bar"] }).notNull(),
     categoria: text("categoria", {
-      enum: ["Chopes", "Bebidas", "Petiscos", "Cozinha"],
+      enum: [
+        "Bebidas alcoólicas",
+        "Bebidas sem álcool",
+        "Porções",
+        "Lanche artesanal",
+        "Complementos",
+        "Energético",
+      ],
     }).notNull(),
     ativo: integer("ativo", { mode: "boolean" }).notNull().default(true),
   },

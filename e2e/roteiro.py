@@ -179,26 +179,26 @@ with sync_playwright() as p:
     checar(page.evaluate("() => location.pathname") == "/mesa/8", "4. Mesa 08 abre para o garçom")
     shot(page, "r01-mesa-8-garcom")
 
-    # ============================================================ passo 5 (Ana, Chopp IPA)
+    # ============================================================ passo 5 (Ana, SASSIONS IPA)
     page.click('[data-testid="adicionar-item"]')
     page.wait_for_selector('[data-testid="add-m2"]')
     page.click('[data-testid="destinatario-Ana"]')
-    page.click('[data-testid="add-m2"]')  # Chopp IPA 500 ml, 16,00, bar
-    ok("5. item adicionado para Ana (Chopp IPA 500 ml)")
+    page.click('[data-testid="add-m2"]')  # SASSIONS IPA 500ML, 18,00, bar
+    ok("5. item adicionado para Ana (SASSIONS IPA 500ML)")
 
     # ============================================================ passo 6 (compartilhado + obs)
     page.click('[data-testid="destinatario-Compartilhado"]')
-    page.click('[data-testid="categoria-Cozinha"]')
+    page.click('[data-testid="categoria-Porções"]')
     page.wait_for_timeout(250)
     page.fill('[data-testid="campo-observacao"]', "Sem cebola")
-    page.click('[data-testid="add-m12"]')  # Tábua para dois, 72,00, cozinha
+    page.click('[data-testid="add-m12"]')  # PORÇÃO MISTA, 25,00, cozinha
     ok("6. item compartilhado com observação 'Sem cebola' adicionado")
     shot(page, "r02-cardapio-ana")
 
     # ============================================================ passo 7 (quantidade)
     page.click('[data-testid="destinatario-Ana"]')
     page.fill('[data-testid="campo-observacao"]', "")
-    page.click('[data-testid="categoria-Bebidas"]')
+    page.click('[data-testid="categoria-Bebidas sem álcool"]')
     page.wait_for_timeout(250)
     campo_qtd = page.locator('[data-testid="quantidade-lancamento"]')
     checar(campo_qtd.count() >= 1, "7. controle de quantidade existe no lançamento")
@@ -207,7 +207,7 @@ with sync_playwright() as p:
         page.click('[aria-label="Aumentar quantidade"]')
         page.wait_for_timeout(250)
         checar(campo_qtd.first.inner_text().strip() == "3", "7. quantidade sobe para 3 no cardápio")
-        page.click('[data-testid="add-m5"]')  # Água com gás 6,00 x3 = 18,00
+        page.click('[data-testid="add-m5"]')  # ÁGUA C GÁS 3,50 x3 = 10,50
     page.click('[data-testid="concluir-cardapio"]')
     page.wait_for_timeout(500)
     comanda = page.inner_text("body")
@@ -215,7 +215,7 @@ with sync_playwright() as p:
     checar(tem(comanda, "Sem cebola"), "6. observação viaja com o item na comanda")
 
     # ============================================================ passo 11 (autoria e horário)
-    novos = page.locator('[data-testid^="item-"]:has-text("Chopp IPA")')
+    novos = page.locator('[data-testid^="item-"]:has-text("SASSIONS IPA")')
     checar(novos.count() >= 1, "11. item novo aparece na comanda")
     linha = novos.first.inner_text()
     checar(tem(linha, "Rafael"), "11. item identifica o garçom Rafael")
@@ -226,7 +226,7 @@ with sync_playwright() as p:
 
     # ============================================================ passo 8 (remover antes do envio)
     antes = page.locator('[data-testid^="item-"]').count()
-    remover = page.locator('[data-testid^="item-"]:has-text("Água com gás")').locator(
+    remover = page.locator('[data-testid^="item-"]:has-text("ÁGUA C GÁS")').locator(
         '[data-testid^="remover-"]'
     )
     if remover.count() == 0:
@@ -258,8 +258,8 @@ with sync_playwright() as p:
         f"10. envio não alterou o total (nada duplicado: {total_antes:.2f} -> {total_depois:.2f})",
     )
     checar(
-        page.locator('[data-testid^="item-"]:has-text("Chopp IPA")').count() == 1,
-        "9/10. o Chopp IPA da Ana continua uma única linha depois do duplo clique",
+        page.locator('[data-testid^="item-"]:has-text("SASSIONS IPA")').count() == 1,
+        "9/10. o SASSIONS IPA da Ana continua uma única linha depois do duplo clique",
     )
     shot(page, "r04-pedido-enviado")
 
@@ -270,12 +270,12 @@ with sync_playwright() as p:
     checar(page.evaluate("() => location.pathname") == "/producao", "12. Produção abre")
     prod = page.inner_text("body")
     checar(tem(prod, "Cozinha") and tem(prod, "Bar"), "13. produção separa cozinha e bar")
-    # a mesa 06 da demonstração já tem Chopp IPA em preparo, então a ficha da Ana
+    # a mesa 06 da demonstração já tem SASSIONS IPA em preparo, então a ficha da Ana
     # precisa ser isolada pelo nome da pessoa para não contar a ficha alheia.
-    ficha_bar = page.locator('[data-testid^="ficha-"]:has-text("Chopp IPA"):has-text("Ana")')
-    ficha_coz = page.locator('[data-testid^="ficha-"]:has-text("Tábua para dois")')
-    checar(ficha_bar.count() == 1, f"13. Chopp IPA caiu em uma única ficha ({ficha_bar.count()})")
-    checar(ficha_coz.count() == 1, f"13. Tábua caiu em uma única ficha ({ficha_coz.count()})")
+    ficha_bar = page.locator('[data-testid^="ficha-"]:has-text("SASSIONS IPA"):has-text("Ana")')
+    ficha_coz = page.locator('[data-testid^="ficha-"]:has-text("PORÇÃO MISTA")')
+    checar(ficha_bar.count() == 1, f"13. SASSIONS IPA caiu em uma única ficha ({ficha_bar.count()})")
+    checar(ficha_coz.count() == 1, f"13. PORÇÃO MISTA caiu em uma única ficha ({ficha_coz.count()})")
     if ficha_bar.count() and ficha_coz.count():
         checar(
             ficha_bar.first.get_attribute("data-testid")
@@ -302,14 +302,14 @@ with sync_playwright() as p:
     page.click('[data-testid="trocar-perfil"]')
     page.click('[data-testid="perfil-garcom"]')
     page.wait_for_timeout(600)
-    retirada = page.locator('[data-testid^="retirada-"]:has-text("Chopp IPA")')
+    retirada = page.locator('[data-testid^="retirada-"]:has-text("SASSIONS IPA")')
     checar(retirada.count() >= 1, "15. Rafael vê o item pronto na fila de retirada")
     if retirada.count():
         checar(tem(retirada.first.inner_text(), "Ana"), "15. retirada mostra a pessoa (Ana)")
         retirada.first.locator('[data-testid^="entregar-"]').click()
         page.wait_for_timeout(600)
         checar(
-            page.locator('[data-testid^="retirada-"]:has-text("Chopp IPA")').count() == 0,
+            page.locator('[data-testid^="retirada-"]:has-text("SASSIONS IPA")').count() == 0,
             "15. item entregue sai da fila de retirada",
         )
     shot(page, "r07-garcom-entregue")

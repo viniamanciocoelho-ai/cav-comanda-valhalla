@@ -391,6 +391,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // A carga inicial sincroniza a sessao com a API antes de habilitar persistencia.
+    // oxlint-disable-next-line react/set-state-in-effect
     void carregarRemoto().catch(() => sair());
     const intervalo = window.setInterval(() => {
       if (escritasPendentes.current === 0) void carregarRemoto().catch(() => undefined);

@@ -19,14 +19,13 @@ const SessaoContext = createContext<SessaoContextValue | null>(null);
 
 export function SessaoProvider({ children }: { children: React.ReactNode }) {
   const [sessao, setSessao] = useState<Sessao | null>(null);
-  const [verificando, setVerificando] = useState(true);
+  const [verificando, setVerificando] = useState(() =>
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem(SESSION_TOKEN_KEY)),
+  );
 
   useEffect(() => {
     const token = window.localStorage.getItem(SESSION_TOKEN_KEY);
-    if (!token) {
-      setVerificando(false);
-      return;
-    }
+    if (!token) return;
     client.comanda
       .estado()
       .then((resultado) => {

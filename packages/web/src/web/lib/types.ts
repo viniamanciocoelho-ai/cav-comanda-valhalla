@@ -85,12 +85,23 @@ export interface Mesa {
   servicoIncluso: boolean;
 }
 
+export const MENU_CATEGORIAS = [
+  "Bebidas alcoólicas",
+  "Bebidas sem álcool",
+  "Porções",
+  "Lanche artesanal",
+  "Complementos",
+  "Energético",
+] as const;
+
+export type MenuCategoria = (typeof MENU_CATEGORIAS)[number];
+
 export interface MenuItem {
   produto_id: string;
   name: string;
   price: number;
   destino_producao: Destino;
-  categoria: "Chopes" | "Bebidas" | "Petiscos" | "Cozinha";
+  categoria: MenuCategoria;
 }
 
 export interface TicketLinha {

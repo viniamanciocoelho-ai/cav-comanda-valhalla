@@ -36,9 +36,14 @@ export function SemConsumoSheet({
   // Cada abertura do dialogo comeca em branco: nenhum motivo herdado do encerramento anterior.
   useEffect(() => {
     if (!open) return;
+    // Resetar o formulario ao reabrir evita reaproveitar motivo ou confirmacao anteriores.
+    // oxlint-disable-next-line react/set-state-in-effect
     setMotivo(null);
+    // oxlint-disable-next-line react/set-state-in-effect
     setObservacao("");
+    // oxlint-disable-next-line react/set-state-in-effect
     setDescartar(false);
+    // oxlint-disable-next-line react/set-state-in-effect
     setAviso(null);
   }, [open]);
 

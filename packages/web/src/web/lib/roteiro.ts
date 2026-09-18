@@ -54,7 +54,7 @@ export const passosRoteiro: PassoRoteiro[] = [
     numero: 4,
     evento: "chopp-ipa-ana",
     perfil: "garcom",
-    titulo: "Adicionar 1 Chopp IPA 500 ml",
+    titulo: "Adicionar 1 SASSIONS IPA 500ML",
     detalhe: "Toque em Adicionar item, escolha o chopp e confirme a quantidade 1.",
   },
   {
@@ -68,7 +68,7 @@ export const passosRoteiro: PassoRoteiro[] = [
     numero: 6,
     evento: "tabua-observacao",
     perfil: "garcom",
-    titulo: "Adicionar 1 Tábua para dois com observação Sem cebola",
+    titulo: "Adicionar 1 PORÇÃO MISTA com observação Sem cebola",
     detalhe: "Escreva a observação no campo antes de adicionar ao pedido.",
   },
   {

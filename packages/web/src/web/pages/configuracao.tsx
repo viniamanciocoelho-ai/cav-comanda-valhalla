@@ -17,7 +17,7 @@ import { Action } from "../components/ui/action";
 import { DemoTag, RuneDivider, SectionHeading, StatusPill } from "../components/ui/pieces";
 import { useTema } from "../components/theme-provider";
 import { configuracaoPrevista } from "../lib/demo-data";
-import { client } from "../lib/api";
+import { MENU_CATEGORIAS } from "../lib/types";
 import type { Destino, MenuItem, Perfil } from "../lib/types";
 
 const icones: Record<string, LucideIcon> = {
@@ -56,7 +56,7 @@ export default function ConfiguracaoPage() {
   const [produto, setProduto] = useState({
     nome: "",
     preco: "",
-    categoria: "Bebidas" as MenuItem["categoria"],
+    categoria: MENU_CATEGORIAS[0],
     destino: "bar" as Destino,
   });
   const [funcionario, setFuncionario] = useState({
@@ -218,7 +218,7 @@ export default function ConfiguracaoPage() {
               }
               className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
             >
-              {["Chopes", "Bebidas", "Petiscos", "Cozinha"].map((categoria) => (
+              {MENU_CATEGORIAS.map((categoria) => (
                 <option key={categoria}>{categoria}</option>
               ))}
             </select>

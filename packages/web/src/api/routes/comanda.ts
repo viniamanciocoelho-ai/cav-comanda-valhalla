@@ -152,7 +152,14 @@ export const produtoSalvar = autenticado
       name: z.string().trim().min(1).max(120),
       price: z.number().nonnegative().max(100_000),
       destino_producao: z.enum(["cozinha", "bar"]),
-      categoria: z.enum(["Chopes", "Bebidas", "Petiscos", "Cozinha"]),
+      categoria: z.enum([
+        "Bebidas alcoólicas",
+        "Bebidas sem álcool",
+        "Porções",
+        "Lanche artesanal",
+        "Complementos",
+        "Energético",
+      ]),
     }),
   )
   .handler(async ({ input, context }) => {
@@ -182,3 +189,11 @@ export const funcionarioSalvar = autenticado
     });
     return { ok: true };
   });
+
+export const comanda = {
+  estado,
+  persistir,
+  configurar,
+  produtoSalvar,
+  funcionarioSalvar,
+};

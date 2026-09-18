@@ -60,7 +60,7 @@ sozinho quando a ação acontece de verdade na tela. Dá para sair dele a qualqu
 2. **Trocar para Rafael (garçom)** — a tela muda para as mesas do turno dele.
 3. **Mesa 08** — Fábio, Ana, Bruno e Carol na mesma mesa.
 4. **Lançar para Ana** — escolher a pessoa antes do item é o ponto central da proposta.
-5. **Lançar um compartilhado com observação** — "Tábua para dois", sem cebola.
+5. **Lançar um compartilhado com observação** — "PORÇÃO MISTA", sem cebola.
 6. **Revisar e enviar** — o garçom confere antes de mandar para a produção.
 7. **Cozinha e bar** — a ficha chega separada por destino, com mesa, pessoa e garçom; avançar até "pronto".
 8. **Entregar na mesa** — o garçom vê "pronto" e confirma a entrega.

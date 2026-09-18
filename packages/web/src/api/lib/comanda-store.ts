@@ -89,6 +89,46 @@ function statusAnteriorValido(status: OrderItem["status"] | undefined) {
   return status && status !== "cancelamento_solicitado" ? status : null;
 }
 
+async function sincronizarCardapioReal(organizacaoId: string) {
+  const marcador = await db
+    .select({ produtoId: cardapioTabela.produtoId })
+    .from(cardapioTabela)
+    .where(
+      and(
+        eq(cardapioTabela.organizacaoId, organizacaoId),
+        eq(cardapioTabela.produtoId, "real-monster"),
+      ),
+    )
+    .limit(1);
+  if (marcador.length) return;
+
+  await db.transaction(async (tx) => {
+    for (const produto of cardapioInicial) {
+      await tx
+        .insert(cardapioTabela)
+        .values({
+          organizacaoId,
+          produtoId: produto.produto_id,
+          nome: produto.name,
+          precoCentavos: centavos(produto.price),
+          destinoProducao: produto.destino_producao,
+          categoria: produto.categoria,
+          ativo: true,
+        })
+        .onConflictDoUpdate({
+          target: [cardapioTabela.organizacaoId, cardapioTabela.produtoId],
+          set: {
+            nome: produto.name,
+            precoCentavos: centavos(produto.price),
+            destinoProducao: produto.destino_producao,
+            categoria: produto.categoria,
+            ativo: true,
+          },
+        });
+    }
+  });
+}
+
 export async function garantirOrganizacaoPadrao() {
   await garantirBanco();
   const bootstrap = configuracaoBootstrap();
@@ -97,7 +137,10 @@ export async function garantirOrganizacaoPadrao() {
     .from(organizacoes)
     .where(eq(organizacoes.codigo, bootstrap.codigo))
     .limit(1);
-  if (existente.length) return;
+  if (existente.length) {
+    await sincronizarCardapioReal(existente[0].organizacaoId);
+    return;
+  }
 
   const instante = agora();
   await db.transaction(async (tx) => {

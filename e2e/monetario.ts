@@ -74,7 +74,7 @@ console.log("\n3. R$ 99,99 dividido por 7");
 
 console.log("\n4. Item individual (nao entra em rateio)");
 {
-  // Chopp IPA 24,50 lancado so para Ana: base dela sobe, as demais ficam intactas.
+  // SASSIONS IPA 18,00 lancado so para Ana: base dela sobe, as demais ficam intactas.
   const chopp = paraCentavos(24.5);
   const individuais = [chopp, 0, 0];
   const rateios = ratear(0, iguais(3));

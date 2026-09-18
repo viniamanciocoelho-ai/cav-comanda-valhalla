@@ -253,12 +253,18 @@ export default function MesaPage() {
 
   // Passo 2 do roteiro: a comanda da mesa do roteiro foi aberta de fato.
   useEffect(() => {
-    if (mesa_id === MESA_DEMO && mesa?.ativa) registrarEvento("mesa-08-aberta");
+    if (mesa_id === MESA_DEMO && mesa?.ativa) {
+      // O evento alimenta o roteiro visual depois que a mesa foi aberta.
+      // oxlint-disable-next-line react/set-state-in-effect
+      registrarEvento("mesa-08-aberta");
+    }
   }, [mesa?.ativa, mesa_id, registrarEvento]);
 
   // Contagem regressiva do "Desfazer": passados 10 s a oferta simplesmente desaparece.
   useEffect(() => {
     if (!desfazer) {
+      // O contador precisa ser zerado quando a oferta de desfazer desaparece.
+      // oxlint-disable-next-line react/set-state-in-effect
       setRestante(0);
       return;
     }

@@ -232,14 +232,14 @@ def roteiro(page, etiqueta: str, mobile: bool) -> None:
     page.wait_for_timeout(600)
     checar(rota_atual(page) == "/mesa/8", "4. Mesa 08 abre")
 
-    # ---------------------------------------------------- 5/6/7. Chopp IPA, compartilhado, obs
+    # ---------------------------------------------------- 5/6/7. SASSIONS IPA, compartilhado, obs
     page.click('[data-testid="adicionar-item"]')
     page.wait_for_selector('[data-testid="add-m2"]')
     page.click('[data-testid="destinatario-Ana"]')
-    page.click('[data-testid="add-m2"]')  # Chopp IPA 500 ml (bar)
-    ok("5. Chopp IPA lançado para Ana")
+    page.click('[data-testid="add-m2"]')  # SASSIONS IPA 500ML (bar)
+    ok("5. SASSIONS IPA lançado para Ana")
     page.click('[data-testid="destinatario-Compartilhado"]')
-    page.click('[data-testid="categoria-Cozinha"]')
+    page.click('[data-testid="categoria-Porções"]')
     page.wait_for_timeout(250)
     page.fill('[data-testid="campo-observacao"]', "sem cebola")
     page.click('[data-testid="add-m12"]')  # Tabua para dois (cozinha), compartilhada
@@ -260,8 +260,8 @@ def roteiro(page, etiqueta: str, mobile: bool) -> None:
         f"9/C5. total intacto após o duplo clique ({total_antes:.2f} -> {total_depois:.2f})",
     )
     checar(
-        page.locator('[data-testid^="item-"]:has-text("Chopp IPA")').count() == 1,
-        "9/C5. Chopp IPA segue em uma única linha",
+        page.locator('[data-testid^="item-"]:has-text("SASSIONS IPA")').count() == 1,
+        "9/C5. SASSIONS IPA segue em uma única linha",
     )
     checar(not tem(page.inner_text("body"), "não enviado"), "9. nada ficou pendente de envio")
 
@@ -269,9 +269,9 @@ def roteiro(page, etiqueta: str, mobile: bool) -> None:
     trocar(page, "producao")
     checar(rota_atual(page) == "/producao", "10. Produção abre")
     checar(links_nav(page) == ["/producao"], f"10/C3. produção só vê Cozinha e bar ({links_nav(page)})")
-    ficha_bar = page.locator('[data-testid^="ficha-"]:has-text("Chopp IPA"):has-text("Ana")')
-    ficha_coz = page.locator('[data-testid^="ficha-"]:has-text("Tábua para dois")')
-    checar(ficha_bar.count() == 1, f"11/C5. uma única ficha do Chopp IPA da Ana ({ficha_bar.count()})")
+    ficha_bar = page.locator('[data-testid^="ficha-"]:has-text("SASSIONS IPA"):has-text("Ana")')
+    ficha_coz = page.locator('[data-testid^="ficha-"]:has-text("PORÇÃO MISTA")')
+    checar(ficha_bar.count() == 1, f"11/C5. uma única ficha do SASSIONS IPA da Ana ({ficha_bar.count()})")
     checar(ficha_coz.count() == 1, f"11/C5. uma única ficha da Tábua ({ficha_coz.count()})")
     if ficha_coz.count():
         linha = ficha_coz.first.inner_text()
@@ -311,14 +311,14 @@ def roteiro(page, etiqueta: str, mobile: bool) -> None:
 
     # ---------------------------------------------------- 13. entrega pelo garcom
     trocar(page, "garcom")
-    retirada = page.locator('[data-testid^="retirada-"]:has-text("Chopp IPA")')
+    retirada = page.locator('[data-testid^="retirada-"]:has-text("SASSIONS IPA")')
     checar(retirada.count() >= 1, "13. item pronto aparece na fila de retirada do garçom")
     if retirada.count():
         item_id = retirada.first.locator('[data-testid^="entregar-"]').get_attribute("data-testid")
         aceitos = clique_duplo_instantaneo(page, f'[data-testid="{item_id}"]')
         page.wait_for_timeout(800)
         checar(
-            page.locator('[data-testid^="retirada-"]:has-text("Chopp IPA")').count() == 0,
+            page.locator('[data-testid^="retirada-"]:has-text("SASSIONS IPA")').count() == 0,
             f"13/C5. entrega registrada uma vez no duplo clique ({aceitos} cliques aceitos)",
         )
         checar(

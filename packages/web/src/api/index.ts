@@ -1,14 +1,7 @@
 import type { RouterClient } from "@orpc/server";
 import { createApp } from "./__core/app";
 import { ping } from "./routes/ping";
-import {
-  configurar,
-  estado,
-  funcionarioSalvar,
-  login,
-  persistir,
-  produtoSalvar,
-} from "./routes/comanda";
+import { comanda, login } from "./routes/comanda";
 
 // API features are oRPC procedures, one file per feature in ./routes/,
 // composed into this router — typed end-to-end via the clients
@@ -19,13 +12,7 @@ import {
 export const router = {
   ping,
   auth: { login },
-  comanda: {
-    estado,
-    persistir,
-    configurar,
-    produtoSalvar,
-    funcionarioSalvar,
-  },
+  comanda,
 };
 
 export type AppRouter = typeof router;

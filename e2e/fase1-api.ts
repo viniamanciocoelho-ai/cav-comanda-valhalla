@@ -38,6 +38,9 @@ assert.equal(inicial.estado.mesas.length, 15);
 assert.equal(inicial.estado.itens.length, 0);
 assert.equal(inicial.estado.pessoas.length, 0);
 assert.equal(inicial.modoDemo, false);
+assert.equal(inicial.cardapio.length, 43);
+assert.equal(inicial.cardapio.find((produto) => produto.produto_id === "m1")?.name, "CHOOP PIL 500ML");
+assert.equal(inicial.cardapio.find((produto) => produto.produto_id === "real-monster")?.price, 18);
 
 const mesa1 = inicial.estado.mesas.find((mesa) => mesa.mesa_id === 1);
 assert.ok(mesa1);

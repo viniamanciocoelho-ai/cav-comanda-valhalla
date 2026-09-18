@@ -46,7 +46,7 @@ with sync_playwright() as p:
     page.click("[data-testid=adicionar-item]")
     page.wait_for_timeout(400)
     page.click("[data-testid='destinatario-Ana']")
-    page.click("[data-testid=add-m2]")  # Chopp IPA 500 ml, bar
+    page.click("[data-testid=add-m2]")  # SASSIONS IPA 500ML, bar
     page.click("[data-testid=add-m9]")  # Asas de Valquiria, cozinha
     page.wait_for_timeout(300)
     page.screenshot(path=f"{OUT}/03-cardapio-desktop.png")

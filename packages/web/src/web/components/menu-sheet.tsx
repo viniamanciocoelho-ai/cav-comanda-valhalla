@@ -1,17 +1,18 @@
 // Dialogo de lancamento de item: escolhe a pessoa, a quantidade e a observacao antes de
-// lancar. O cardapio e PROVISORIO (ver lib/demo-data.ts).
+// lancar um produto do catalogo persistido.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Beer, Minus, Plus, UserPlus, UtensilsCrossed } from "lucide-react";
 import { COMPARTILHADO, compartilhadoId } from "../lib/demo-data";
 import { destinoLabel, mesaLabel, money } from "../lib/format";
+import { MENU_CATEGORIAS } from "../lib/types";
 import type { MenuItem } from "../lib/types";
 import { useComanda } from "./comanda-provider";
 import { Action } from "./ui/action";
 import { Sheet } from "./ui/sheet";
 import { DemoTag } from "./ui/pieces";
 
-const categorias = ["Todos", "Chopes", "Bebidas", "Petiscos", "Cozinha"] as const;
+const categorias = ["Todos", ...MENU_CATEGORIAS] as const;
 
 export function MenuSheet({
   open,
@@ -34,21 +35,19 @@ export function MenuSheet({
   const [novaPessoa, setNovaPessoa] = useState("");
   const [adicionados, setAdicionados] = useState(0);
 
-  // A mesa pode ganhar pessoas enquanto o dialogo esta aberto: mantem uma selecao valida.
-  useEffect(() => {
-    const valido = para === compartilhado || pessoas.some((p) => p.pessoa_id === para);
-    if (!valido) setPara(pessoas[0]?.pessoa_id ?? compartilhado);
-  }, [compartilhado, para, pessoas]);
-
   const itens = useMemo(
     () => (categoria === "Todos" ? cardapio : cardapio.filter((i) => i.categoria === categoria)),
-    [categoria],
+    [cardapio, categoria],
   );
+  const destinoAtual =
+    para === compartilhado || pessoas.some((pessoa) => pessoa.pessoa_id === para)
+      ? para
+      : (pessoas[0]?.pessoa_id ?? compartilhado);
 
   const nomeSelecionado =
-    para === compartilhado
+    destinoAtual === compartilhado
       ? COMPARTILHADO
-      : (pessoas.find((p) => p.pessoa_id === para)?.nome ?? "—");
+      : (pessoas.find((p) => p.pessoa_id === destinoAtual)?.nome ?? "—");
 
   function selecionar(pessoa_id: string) {
     setPara(pessoa_id);
@@ -72,11 +71,11 @@ export function MenuSheet({
   }
 
   function adicionar(item: MenuItem) {
-    adicionarItem({ mesa_id, pessoa_id: para, produto: item, quantidade, observacao });
+    adicionarItem({ mesa_id, pessoa_id: destinoAtual, produto: item, quantidade, observacao });
     setAdicionados((n) => n + quantidade);
     notificar(
       `${quantidade}× ${item.name} lançado para ${
-        para === compartilhado ? "a mesa (compartilhado)" : nomeSelecionado
+        destinoAtual === compartilhado ? "a mesa (compartilhado)" : nomeSelecionado
       }${observacao.trim() ? ` · ${observacao.trim()}` : ""}.`,
       "sucesso",
     );
@@ -118,7 +117,7 @@ export function MenuSheet({
         </legend>
         <div className="flex flex-wrap gap-2">
           {pessoas.map((pessoa) => {
-            const selecionado = pessoa.pessoa_id === para;
+            const selecionado = pessoa.pessoa_id === destinoAtual;
             return (
               <button
                 key={pessoa.pessoa_id}
@@ -136,13 +135,13 @@ export function MenuSheet({
               </button>
             );
           })}
-          <button
-            type="button"
-            onClick={() => selecionar(compartilhado)}
-            aria-pressed={para === compartilhado}
+            <button
+              type="button"
+              onClick={() => selecionar(compartilhado)}
+              aria-pressed={destinoAtual === compartilhado}
             data-testid="destinatario-Compartilhado"
             className={`font-display min-h-11 rounded-md border px-3.5 text-[12px] tracking-[0.1em] uppercase transition-colors duration-150 ${
-              para === compartilhado
+              destinoAtual === compartilhado
                 ? "border-gold bg-gold text-on-accent"
                 : "border-bronze/60 bg-surface-2 text-muted border-dashed hover:text-parchment"
             }`}

@@ -9,6 +9,8 @@ export function useColorScheme() {
   const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
+    // A leitura do esquema de cores depende da hidratacao no navegador.
+    // oxlint-disable-next-line react/set-state-in-effect
     setHasHydrated(true);
   }, []);
 

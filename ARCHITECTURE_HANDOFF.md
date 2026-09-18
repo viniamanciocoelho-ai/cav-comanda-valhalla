@@ -186,5 +186,5 @@ Ao testar o diálogo de encerramento sem consumo: `components/ui/sheet.tsx` usa 
 Dois cuidados ao escrever novas verificações, aprendidos na marra:
 
 - Muito texto da interface é `uppercase` por CSS mas minúsculo no DOM — compare com `casefold()`.
-- Os dados demonstrativos repetem produtos entre mesas (a mesa 06 já tem Chopp IPA). Filtre a ficha pela
+- Os dados demonstrativos repetem produtos entre mesas (a mesa 06 já tem SASSIONS IPA). Filtre a ficha pela
   **pessoa**, não só pelo produto, ou o teste conta ficha alheia.
