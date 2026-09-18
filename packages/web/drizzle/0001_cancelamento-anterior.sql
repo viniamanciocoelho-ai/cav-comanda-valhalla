@@ -1,0 +1,1 @@
+ALTER TABLE `itens_pedido` ADD `status_anterior` text;

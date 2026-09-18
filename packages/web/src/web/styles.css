@@ -1,0 +1,313 @@
+@import "tailwindcss";
+@import "./fonts.css";
+
+/* ==========================================================================
+   CAV Comanda | Valhalla — identidade visual
+   Tema escuro = padrao (madeira escura). Tema claro = pergaminho.
+   Ver design.md e DESIGN_SYSTEM.md na raiz do projeto.
+   ========================================================================== */
+
+:root {
+  --vh-void: #0a0908;
+  --vh-surface: #16120e;
+  --vh-surface-2: #1e1811;
+  --vh-surface-3: #2a2117;
+  --vh-border: #382c1e;
+  --vh-border-strong: #4a3a26;
+  --vh-text: #f2e6ce;
+  --vh-muted: #a7977c;
+  --vh-gold: #c9a24a;
+  --vh-gold-bright: #e8c87e;
+  --vh-bronze: #8a6a3b;
+  --vh-ember: #c9762b;
+  --vh-moss: #83975c;
+  --vh-blood: #b04a34;
+  --vh-on-accent: #140e07;
+  --vh-shadow: 0 22px 48px -24px rgb(0 0 0 / 0.8);
+  --vh-grain-opacity: 0.05;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --vh-void: #e7dbc4;
+  --vh-surface: #f6eede;
+  --vh-surface-2: #ede2cd;
+  --vh-surface-3: #e0d2b6;
+  --vh-border: #c9b590;
+  --vh-border-strong: #b29b72;
+  --vh-text: #1e1710;
+  --vh-muted: #6a5b45;
+  --vh-gold: #8a6520;
+  --vh-gold-bright: #6e4e14;
+  --vh-bronze: #a1854f;
+  --vh-ember: #a8551b;
+  --vh-moss: #55703b;
+  --vh-blood: #93372a;
+  --vh-on-accent: #fbf4e6;
+  --vh-shadow: 0 20px 40px -26px rgb(63 44 16 / 0.45);
+  --vh-grain-opacity: 0.035;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-void: var(--vh-void);
+  --color-surface: var(--vh-surface);
+  --color-surface-2: var(--vh-surface-2);
+  --color-surface-3: var(--vh-surface-3);
+  --color-line: var(--vh-border);
+  --color-line-strong: var(--vh-border-strong);
+  --color-parchment: var(--vh-text);
+  --color-muted: var(--vh-muted);
+  --color-gold: var(--vh-gold);
+  --color-gold-bright: var(--vh-gold-bright);
+  --color-bronze: var(--vh-bronze);
+  --color-ember: var(--vh-ember);
+  --color-moss: var(--vh-moss);
+  --color-blood: var(--vh-blood);
+  --color-on-accent: var(--vh-on-accent);
+
+  --font-display: "Oswald", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Manrope", system-ui, -apple-system, sans-serif;
+  --font-brand: "Cinzel", Georgia, serif;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+@layer base {
+  * {
+    border-color: var(--vh-border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--vh-void);
+    color: var(--vh-text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+  }
+
+  button,
+  select,
+  input {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  /* Foco visivel e consistente em toda a aplicacao. */
+  :focus-visible {
+    outline: 2px solid var(--vh-gold-bright);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--vh-gold) 40%, transparent);
+  }
+
+  /* Barras de rolagem discretas, no material do tema. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--vh-border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--vh-border-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+}
+
+/* ============================ materiais ============================ */
+
+/* Grao de filme gerado por SVG inline: nenhuma imagem externa. */
+.vh-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--vh-grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Grao de madeira: fios verticais irregulares de baixissimo contraste. */
+.vh-wood {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--vh-bronze) 7%, transparent) 0 1px,
+      transparent 1px 9px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--vh-void) 55%, transparent) 0 2px,
+      transparent 2px 23px
+    ),
+    linear-gradient(180deg, var(--vh-surface), var(--vh-void));
+}
+
+/* Chapa escura levemente iluminada por cima, para cabecalhos. */
+.vh-plate {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--vh-surface-3) 60%, transparent),
+    transparent 70%
+  );
+}
+
+/* Cantoneiras de metal aplicadas ao painel de destaque do salao. */
+.vh-brackets {
+  position: relative;
+}
+.vh-brackets::before,
+.vh-brackets::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  border-color: var(--vh-gold);
+  opacity: 0.75;
+}
+.vh-brackets::before {
+  top: 8px;
+  left: 8px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+.vh-brackets::after {
+  bottom: 8px;
+  right: 8px;
+  border-bottom: 1px solid;
+  border-right: 1px solid;
+}
+
+/* Fio de estado a esquerda do cartao/linha. */
+.vh-edge {
+  position: relative;
+}
+.vh-edge::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--vh-edge-color, var(--vh-border-strong));
+}
+
+.vh-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================ movimento ============================ */
+
+@keyframes vh-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vh-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vh-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.vh-rise {
+  animation: vh-rise 180ms ease-out both;
+}
+.vh-toast {
+  animation: vh-toast-in 160ms ease-out both;
+}
+.vh-pulse {
+  animation: vh-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================ dialogos ============================ */
+
+dialog {
+  /* Tailwind preflight zera margens: devolvemos o auto para o dialogo ficar centralizado. */
+  margin: auto;
+  color: var(--vh-text);
+  background: var(--vh-surface);
+  padding: 0;
+  border: 1px solid var(--vh-border-strong);
+  max-width: min(680px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  width: min(680px, calc(100vw - 24px));
+}
+dialog::backdrop {
+  background: rgb(4 3 2 / 0.72);
+}
+[data-theme="light"] dialog::backdrop {
+  background: rgb(40 28 10 / 0.45);
+}
+
+@media (max-width: 640px) {
+  dialog {
+    margin: auto auto 0;
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 92dvh;
+    border-bottom: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+}

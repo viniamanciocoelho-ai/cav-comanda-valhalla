@@ -1,0 +1,274 @@
+// Dialogo do caixa: divisao por pessoa, controle da taxa de servico e impressao da notinha.
+// O pagamento continua externo e a integracao fiscal permanece fora desta fase.
+// A conta e sempre dividida por pessoa e cada um paga a parte dele na forma que quiser —
+// a maquininha continua sendo a de hoje, fora do sistema.
+
+import { useState } from "react";
+import { useLocation } from "wouter";
+import { CheckCircle2, Circle, Info, Printer } from "lucide-react";
+import { TAXA_SERVICO } from "../lib/demo-data";
+import { mesaLabel, money } from "../lib/format";
+import { useAcaoUnica } from "../lib/hooks";
+import { imprimirRecibo, montarRecibo } from "../lib/recibo";
+import { useComanda } from "./comanda-provider";
+import { Action } from "./ui/action";
+import { Sheet } from "./ui/sheet";
+import { DemoTag, RuneDivider } from "./ui/pieces";
+
+export function CheckoutSheet({
+  open,
+  onClose,
+  mesa_id,
+}: {
+  open: boolean;
+  onClose: () => void;
+  mesa_id: number;
+}) {
+  const [, navegar] = useLocation();
+  const {
+    resumo,
+    mesas,
+    itensDaMesa,
+    alternarServico,
+    fecharConta,
+    notificar,
+    pessoasDaMesa,
+    larguraRecibo,
+    registrarEvento,
+  } = useComanda();
+  const [pagos, setPagos] = useState<string[]>([]);
+  // Um fechamento por clique: o duplo clique nao gera dois registros (lib/hooks.ts).
+  const encerramento = useAcaoUnica();
+  const servico = useAcaoUnica();
+
+  const conta = resumo(mesa_id);
+  const mesa = mesas.find((m) => m.mesa_id === mesa_id);
+  const cancelamentoPendente = itensDaMesa(mesa_id).some(
+    (item) => item.status === "cancelamento_solicitado",
+  );
+  const faltam = conta.divisao.filter((linha) => !pagos.includes(linha.pessoa_id)).length;
+
+  function fechar() {
+    setPagos([]);
+    onClose();
+  }
+
+  function alternarPago(pessoa_id: string) {
+    setPagos((atual) =>
+      atual.includes(pessoa_id) ? atual.filter((id) => id !== pessoa_id) : [...atual, pessoa_id],
+    );
+  }
+
+  function imprimir() {
+    try {
+      imprimirRecibo(
+        montarRecibo(
+          mesa_id,
+          pessoasDaMesa(mesa_id),
+          itensDaMesa(mesa_id),
+          conta.divisao,
+          larguraRecibo,
+        ),
+        larguraRecibo,
+      );
+      registrarEvento("notinha-impressa");
+      notificar("Notinha enviada para a janela de impressão.", "sucesso");
+    } catch (erro) {
+      notificar(erro instanceof Error ? erro.message : "Não foi possível imprimir.", "atencao");
+    }
+  }
+
+  function confirmar() {
+    if (conta.novos > 0) {
+      notificar(
+        `${conta.novos} ${conta.novos === 1 ? "item ainda não foi enviado" : "itens ainda não foram enviados"} para a produção. Envie ou remova antes de fechar.`,
+        "atencao",
+      );
+      return;
+    }
+    if (cancelamentoPendente) {
+      notificar(
+        "Resolva os cancelamentos pendentes com a gerência antes de fechar a conta.",
+        "atencao",
+      );
+      return;
+    }
+    if (!conta.divisao.length) {
+      notificar("Cadastre pelo menos uma pessoa na comanda antes de fechar.", "atencao");
+      return;
+    }
+    const registro = fecharConta(mesa_id, false);
+    if (!registro) {
+      notificar("Não há consumo para fechar nesta mesa.", "atencao");
+      return;
+    }
+      notificar(
+      `Mesa ${mesaLabel(mesa_id)} fechada em ${registro.hora} · ${money(registro.total)}. Registro gravado.`,
+      "sucesso",
+    );
+    fechar();
+    navegar("/fechamentos");
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onClose={fechar}
+      testId="dialogo-fechamento"
+      eyebrow={`Mesa ${mesaLabel(mesa_id)}`}
+      title="Dividir e fechar a conta"
+      hint="Itens individuais ficam com cada pessoa. Itens compartilhados são rateados igualmente. Cada pessoa paga a parte dela na forma que preferir."
+      footer={
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted text-[12px]">
+            {faltam
+              ? `${faltam} ${faltam === 1 ? "pessoa ainda não pagou" : "pessoas ainda não pagaram"} (marcação opcional).`
+              : "Todas as partes foram marcadas como pagas."}
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Action variante="tracejada" onClick={imprimir} data-testid="imprimir-notinha">
+              <Printer className="size-4" />
+              Imprimir notinha
+            </Action>
+            <Action
+              variante="primaria"
+              onClick={() => encerramento.executar(confirmar)}
+              disabled={encerramento.processando}
+              aria-disabled={encerramento.processando}
+              data-testid="confirmar-fechamento"
+            >
+              <CheckCircle2 className="size-4" />
+              {encerramento.processando ? "Fechando…" : "Confirmar fechamento"}
+            </Action>
+          </div>
+        </div>
+      }
+    >
+      <div className="border-line bg-surface-2 mb-5 rounded-md border">
+        <div className="divide-line divide-y">
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <p className="text-muted text-[13px]">Consumo</p>
+            <p className="font-display vh-tabular text-parchment text-[15px]">
+              {money(conta.subtotal)}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+            <div className="min-w-0">
+              <p className="text-muted text-[13px]">
+                Serviço {Math.round(TAXA_SERVICO * 100)}%{" "}
+                {conta.servicoIncluso ? "(incluso)" : "(retirado)"}
+              </p>
+              <p className="text-muted mt-0.5 text-[12px]">
+                O caixa é quem inclui ou retira a taxa, a pedido do cliente.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <p className="font-display vh-tabular text-parchment text-[15px]">
+                {money(conta.servico)}
+              </p>
+              <Action
+                variante={conta.servicoIncluso ? "secundaria" : "tracejada"}
+                onClick={() => servico.executar(() => alternarServico(mesa_id))}
+                disabled={servico.processando}
+                aria-disabled={servico.processando}
+                data-testid="alternar-servico"
+              >
+                {conta.servicoIncluso ? "Retirar serviço" : "Incluir serviço"}
+              </Action>
+            </div>
+          </div>
+          <div className="bg-surface-3 flex items-center justify-between px-4 py-3">
+            <p className="font-display text-parchment text-[13px] tracking-[0.14em] uppercase">
+              Total da mesa
+            </p>
+            <p className="font-display vh-tabular text-gold-bright text-[22px] tracking-[0.03em]">
+              {money(conta.total)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p className="font-display text-gold mb-3 text-[12px] tracking-[0.2em] uppercase">
+        Quanto cada pessoa paga
+      </p>
+
+      <ul className="grid gap-2.5 sm:grid-cols-2">
+        {conta.divisao.map((linha) => {
+          const pago = pagos.includes(linha.pessoa_id);
+          return (
+            <li
+              key={linha.pessoa_id}
+              className="border-line bg-surface rounded-md border p-3.5"
+              data-testid={`divisao-${linha.pessoa}`}
+            >
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <p className="font-display text-parchment text-[14px] tracking-[0.08em] uppercase">
+                  {linha.pessoa}
+                </p>
+                <p className="font-display vh-tabular text-gold-bright text-[18px] tracking-[0.03em]">
+                  {money(linha.total)}
+                </p>
+              </div>
+              <dl className="text-muted grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[12px]">
+                <dt>Consumo individual</dt>
+                <dd className="vh-tabular text-right">{money(linha.individual)}</dd>
+                <dt>Parte do compartilhado</dt>
+                <dd className="vh-tabular text-right">{money(linha.rateio)}</dd>
+                <dt>Serviço</dt>
+                <dd className="vh-tabular text-right">{money(linha.servico)}</dd>
+              </dl>
+              <button
+                type="button"
+                onClick={() => alternarPago(linha.pessoa_id)}
+                aria-pressed={pago}
+                data-testid={`pago-${linha.pessoa}`}
+                className={`font-display mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-md border text-[12px] tracking-[0.12em] uppercase transition-colors duration-150 ${
+                  pago
+                    ? "border-moss/60 text-moss bg-surface-2"
+                    : "border-line text-muted hover:border-gold/70 hover:text-parchment"
+                }`}
+              >
+                {pago ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
+                {pago ? "Parte paga" : "Marcar como paga"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {!conta.divisao.length ? (
+        <div className="border-line text-muted rounded-md border border-dashed p-6 text-center text-[13px]">
+          Esta mesa não tem pessoas cadastradas na comanda.
+        </div>
+      ) : null}
+
+      <RuneDivider className="my-5" />
+
+      <div
+        className="border-bronze/50 bg-surface-2 flex items-start gap-3 rounded-md border border-dashed p-3.5"
+        data-testid="aviso-notinha"
+      >
+        <span className="text-gold mt-0.5 shrink-0" aria-hidden="true">
+          <Info className="size-[18px]" />
+        </span>
+        <div className="min-w-0">
+          <p className="font-display text-parchment text-[12px] tracking-[0.12em] uppercase">
+            Recibo simples
+          </p>
+          <p className="text-muted mt-1 text-[12px] leading-relaxed">
+            A notinha é um resumo de consumo sem valor fiscal. A impressão usa a impressora
+            configurada no sistema operacional; emissão de NFC-e continua fora desta fase.
+          </p>
+          <DemoTag className="mt-2.5">Sem valor fiscal</DemoTag>
+        </div>
+      </div>
+
+      {mesa && !mesa.contaSolicitada ? (
+        <p className="text-muted mt-4 text-[12px] leading-relaxed">
+          Esta mesa não passou pelo pedido de fechamento do garçom. No dia a dia o caixa também
+          pode fechar direto, quando o cliente vem até o balcão.
+        </p>
+      ) : null}
+    </Sheet>
+  );
+}

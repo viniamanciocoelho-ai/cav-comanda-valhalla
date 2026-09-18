@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "android": {
+      "package": "com.runable.cavcomandakdvwyrx",
+      "edgeToEdgeEnabled": true
+    },
+    "extra": {
+      "apiUrl": "https://cavcoma-kdvwyrx-preview-4200.runable.site/",
+      "applicationId": "cavcoma-kdvwyrx",
+      "runableAuthIssuer": "https://api.runable.com/api/auth"
+    },
+    "ios": {
+      "bundleIdentifier": "com.runable.cavcomandakdvwyrx",
+      "supportsTablet": true
+    },
+    "name": "CAV Comanda",
+    "slug": "cav-comanda-valhalla",
+    "version": "1.0.0",
+    "scheme": "runable-cavcoma-kdvwyrx",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
