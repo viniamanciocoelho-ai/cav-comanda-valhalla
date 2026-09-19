@@ -174,6 +174,54 @@ export const fechamentos = sqliteTable(
   ],
 );
 
+export const itensFechamento = sqliteTable(
+  "itens_fechamento",
+  {
+    organizacaoId: text("organizacao_id").notNull(),
+    fechamentoId: text("fechamento_id").notNull(),
+    itemId: text("item_id").notNull(),
+    mesaId: integer("mesa_id").notNull(),
+    produtoId: text("produto_id").notNull(),
+    nome: text("nome").notNull(),
+    precoCentavos: integer("preco_centavos").notNull(),
+    quantidade: integer("quantidade").notNull(),
+    destinoProducao: text("destino_producao", { enum: ["cozinha", "bar"] }).notNull(),
+    criadoEm: text("criado_em").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.organizacaoId, table.fechamentoId, table.itemId] }),
+    index("itens_fechamento_org_fechamento").on(
+      table.organizacaoId,
+      table.fechamentoId,
+    ),
+  ],
+);
+
+export const cancelamentosAutorizados = sqliteTable(
+  "cancelamentos_autorizados",
+  {
+    organizacaoId: text("organizacao_id").notNull(),
+    cancelamentoId: text("cancelamento_id").notNull(),
+    itemId: text("item_id").notNull(),
+    mesaId: integer("mesa_id").notNull(),
+    produtoId: text("produto_id").notNull(),
+    nome: text("nome").notNull(),
+    precoCentavos: integer("preco_centavos").notNull(),
+    quantidade: integer("quantidade").notNull(),
+    destinoProducao: text("destino_producao", { enum: ["cozinha", "bar"] }).notNull(),
+    autorizadoPorId: text("autorizado_por_id").notNull(),
+    autorizadoPorNome: text("autorizado_por_nome").notNull(),
+    autorizadoEm: text("autorizado_em").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.organizacaoId, table.cancelamentoId] }),
+    index("cancelamentos_org_autorizado").on(
+      table.organizacaoId,
+      table.autorizadoEm,
+    ),
+  ],
+);
+
 export const encerramentosSemConsumo = sqliteTable(
   "encerramentos_sem_consumo",
   {

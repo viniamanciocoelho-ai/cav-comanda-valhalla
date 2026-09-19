@@ -23,10 +23,10 @@ export const rotaInicial: Record<Perfil, string> = {
 
 /** Rotas permitidas por perfil. Prefixos: "/mesa" cobre "/mesa/8". */
 export const rotasPermitidas: Record<Perfil, string[]> = {
-  gerencia: ["/", "/mesa", "/producao", "/fechamentos", "/configuracao", "/caixa", "/garcom"],
+  gerencia: ["/", "/mesa", "/producao", "/fechamentos", "/relatorio-diario", "/configuracao", "/caixa", "/garcom"],
   garcom: ["/garcom", "/mesa"],
   producao: ["/producao"],
-  caixa: ["/caixa", "/mesa", "/fechamentos"],
+  caixa: ["/caixa", "/mesa", "/fechamentos", "/relatorio-diario"],
 };
 
 export function podeAcessar(perfil: Perfil, rota: string): boolean {

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   ChefHat,
+  ClipboardList,
   LayoutGrid,
   Moon,
   ReceiptText,
@@ -39,6 +40,7 @@ const todosDestinos: Destino[] = [
   { href: "/producao", titulo: "Cozinha e bar", curto: "Produção", icone: ChefHat },
   { href: "/caixa", titulo: "Caixa", curto: "Caixa", icone: Wallet },
   { href: "/fechamentos", titulo: "Fechamentos", curto: "Contas", icone: ReceiptText },
+  { href: "/relatorio-diario", titulo: "Fechamento diário", curto: "Dia", icone: ClipboardList },
   { href: "/configuracao", titulo: "Configuração", curto: "Ajustes", icone: SlidersHorizontal },
 ];
 

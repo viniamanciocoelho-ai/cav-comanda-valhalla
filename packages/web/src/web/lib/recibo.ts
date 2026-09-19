@@ -4,9 +4,10 @@ import type {
   LinhaDivisao,
   OrderItem,
   Pessoa,
+  RelatorioDiario,
   Ticket,
 } from "./types";
-import { money } from "./format";
+import { money, moneyCentavos, motivoSemConsumoLabel } from "./format";
 import { ehCompartilhado } from "./operacao";
 import { ratear } from "./rateio";
 
@@ -49,6 +50,65 @@ export function montarFichaProducao(ticket: Ticket, largura: 58 | 80): string {
     if (linha.observacao) linhas.push(`  OBS: ${linha.observacao}`);
   }
   linhas.push("", `Destino: ${destinoLabel(ticket.destino_producao)}`);
+  return linhas.join("\n");
+}
+
+export function montarRelatorioDiario(
+  relatorio: RelatorioDiario,
+  largura: 58 | 80,
+): string {
+  const separador = "-".repeat(largura === 58 ? 32 : 42);
+  const linhas = [
+    "VALHALLA CHOPERIA",
+    "FECHAMENTO DIARIO",
+    relatorio.data.split("-").reverse().join("/"),
+    separador,
+    `FATURAMENTO ${moneyCentavos(relatorio.faturamentoCentavos)}`,
+    `MESAS ${relatorio.mesasAtendidas}`,
+    `TICKET MEDIO ${moneyCentavos(relatorio.ticketMedioCentavos)}`,
+    `SERVICO ${moneyCentavos(relatorio.servicoCentavos)}`,
+    "",
+    "POR DESTINO",
+  ];
+  for (const destino of relatorio.destinos) {
+    linhas.push(
+      `${destino.destino === "bar" ? "BAR" : "COZINHA"} ${moneyCentavos(destino.totalCentavos)}`,
+    );
+  }
+  if (relatorio.produtos.length) {
+    linhas.push("", "PRODUTOS MAIS VENDIDOS");
+    for (const produto of relatorio.produtos.slice(0, 20)) {
+      linhas.push(
+        `${produto.quantidade}x ${produto.nome} ${moneyCentavos(produto.valorCentavos)}`,
+      );
+    }
+  }
+  if (relatorio.fechamentos.length) {
+    linhas.push("", "FECHAMENTOS");
+    for (const fechamento of relatorio.fechamentos) {
+      linhas.push(
+        `M${String(fechamento.mesa_id).padStart(2, "0")} ${fechamento.hora} ${moneyCentavos(fechamento.totalCentavos)} ${fechamento.funcionario_nome}`,
+      );
+    }
+  }
+  if (relatorio.encerramentosSemConsumo.length) {
+    linhas.push("", "SEM CONSUMO");
+    for (const registro of relatorio.encerramentosSemConsumo) {
+      linhas.push(
+        `M${String(registro.mesa_id).padStart(2, "0")} ${motivoSemConsumoLabel[registro.motivo]}`,
+      );
+    }
+  }
+  if (relatorio.cancelamentos.length) {
+    linhas.push("", "CANCELAMENTOS");
+    for (const cancelamento of relatorio.cancelamentos) {
+      linhas.push(
+        `M${String(cancelamento.mesa_id).padStart(2, "0")} ${cancelamento.quantidade}x ${cancelamento.nome} - ${cancelamento.autorizado_por_nome}`,
+      );
+    }
+  }
+  if (!relatorio.mesasAtendidas) linhas.push("", "SEM MOVIMENTO NO DIA");
+  linhas.push("", separador, "Relatorio operacional");
   return linhas.join("\n");
 }
 

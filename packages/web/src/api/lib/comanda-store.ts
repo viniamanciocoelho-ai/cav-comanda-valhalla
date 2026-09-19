@@ -3,12 +3,14 @@ import { db } from "../database";
 import {
   cardapio as cardapioTabela,
   auditoria,
+  cancelamentosAutorizados,
   encerramentosSemConsumo,
   fechamentos,
   fichasProducao,
   filaImpressoes,
   funcionarios as funcionariosTabela,
   impressoras,
+  itensFechamento,
   itensPedido,
   mesas,
   organizacoes,
@@ -1593,9 +1595,10 @@ export async function salvarEstado(
   );
   const resultado = await db.transaction(async (tx) => {
     const proxima = esperado + 1;
+    const instante = agora();
     const resultado = await tx
       .update(versoesEstado)
-      .set({ versao: proxima, atualizadoEm: agora() })
+      .set({ versao: proxima, atualizadoEm: instante })
       .where(
         and(
           eq(versoesEstado.organizacaoId, organizacaoId),
@@ -1603,6 +1606,56 @@ export async function salvarEstado(
         ),
       );
     if (resultado.rowsAffected !== 1) return null;
+    const fechamentosAnteriores = new Set(
+      anterior.fechamentos.map((fechamento) => fechamento.fechamento_id),
+    );
+    const novosFechamentos = estado.fechamentos.filter(
+      (fechamento) => !fechamentosAnteriores.has(fechamento.fechamento_id),
+    );
+    const linhasFechadas = novosFechamentos.flatMap((fechamento) =>
+      anterior.itens
+        .filter((item) => item.mesa_id === fechamento.mesa_id)
+        .map((item) => ({
+          organizacaoId,
+          fechamentoId: fechamento.fechamento_id,
+          itemId: item.item_id,
+          mesaId: item.mesa_id,
+          produtoId: item.produto_id,
+          nome: item.name,
+          precoCentavos: centavos(item.price),
+          quantidade: item.quantidade,
+          destinoProducao: item.destino_producao,
+          criadoEm: instante,
+        })),
+    );
+    if (linhasFechadas.length) {
+      await tx.insert(itensFechamento).values(linhasFechadas);
+    }
+    if (acao === "decidir_cancelamento") {
+      const idsAtuais = new Set(estado.itens.map((item) => item.item_id));
+      const autorizados = anterior.itens
+        .filter(
+          (item) =>
+            item.status === "cancelamento_solicitado" && !idsAtuais.has(item.item_id),
+        )
+        .map((item) => ({
+          organizacaoId,
+          cancelamentoId: crypto.randomUUID(),
+          itemId: item.item_id,
+          mesaId: item.mesa_id,
+          produtoId: item.produto_id,
+          nome: item.name,
+          precoCentavos: centavos(item.price),
+          quantidade: item.quantidade,
+          destinoProducao: item.destino_producao,
+          autorizadoPorId: auditor.funcionario_id,
+          autorizadoPorNome: auditor.funcionario_nome,
+          autorizadoEm: instante,
+        }));
+      if (autorizados.length) {
+        await tx.insert(cancelamentosAutorizados).values(autorizados);
+      }
+    }
     await gravarEstadoTx(
       tx,
       organizacaoId,
@@ -1618,7 +1671,7 @@ export async function salvarEstado(
       acao,
       entidade: "estado_operacional",
       entidadeId,
-      criadoEm: agora(),
+      criadoEm: instante,
     });
     const impressaoIds =
       acao === "enviar_pedido" || acao === "fechar_conta"

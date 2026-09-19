@@ -13,6 +13,13 @@ export function money(value: number): string {
   return brl.format(value);
 }
 
+export function moneyCentavos(value: number): string {
+  if (!Number.isSafeInteger(value)) {
+    throw new RangeError("O valor deve ser um inteiro seguro em centavos.");
+  }
+  return brl.format(value / 100);
+}
+
 export function duracao(minutos: number): string {
   if (minutos <= 0) return "agora";
   if (minutos < 60) return `${minutos} min`;

@@ -12,6 +12,7 @@ const Garcom = lazy(() => import("./pages/garcom"));
 const Caixa = lazy(() => import("./pages/caixa"));
 const Producao = lazy(() => import("./pages/producao"));
 const Fechamentos = lazy(() => import("./pages/fechamentos"));
+const RelatorioDiario = lazy(() => import("./pages/relatorio-diario"));
 const Configuracao = lazy(() => import("./pages/configuracao"));
 
 const executandoDeArquivo =
@@ -38,6 +39,7 @@ function App() {
               <Route path="/caixa" component={Caixa} />
               <Route path="/producao" component={Producao} />
               <Route path="/fechamentos" component={Fechamentos} />
+              <Route path="/relatorio-diario" component={RelatorioDiario} />
               <Route path="/configuracao" component={Configuracao} />
               <Route component={Index} />
             </Switch>

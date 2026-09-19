@@ -3,6 +3,7 @@ import { createApp } from "./__core/app";
 import { ping } from "./routes/ping";
 import { comanda, login, logout } from "./routes/comanda";
 import { impressao } from "./routes/impressao";
+import { relatorio } from "./routes/relatorio";
 
 // API features are oRPC procedures, one file per feature in ./routes/,
 // composed into this router — typed end-to-end via the clients
@@ -15,6 +16,7 @@ export const router = {
   auth: { login, logout },
   comanda,
   impressao,
+  relatorio,
 };
 
 export type AppRouter = typeof router;

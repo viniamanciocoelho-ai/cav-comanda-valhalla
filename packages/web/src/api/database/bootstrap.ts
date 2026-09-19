@@ -70,6 +70,25 @@ async function criarEstrutura() {
       PRIMARY KEY (organizacao_id, fechamento_id)
     )`,
     `CREATE INDEX IF NOT EXISTS fechamentos_org_mesa ON fechamentos (organizacao_id, mesa_id)`,
+    `CREATE TABLE IF NOT EXISTS itens_fechamento (
+      organizacao_id TEXT NOT NULL, fechamento_id TEXT NOT NULL, item_id TEXT NOT NULL,
+      mesa_id INTEGER NOT NULL, produto_id TEXT NOT NULL, nome TEXT NOT NULL,
+      preco_centavos INTEGER NOT NULL, quantidade INTEGER NOT NULL,
+      destino_producao TEXT NOT NULL, criado_em TEXT NOT NULL,
+      PRIMARY KEY (organizacao_id, fechamento_id, item_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS itens_fechamento_org_fechamento
+      ON itens_fechamento (organizacao_id, fechamento_id)`,
+    `CREATE TABLE IF NOT EXISTS cancelamentos_autorizados (
+      organizacao_id TEXT NOT NULL, cancelamento_id TEXT NOT NULL, item_id TEXT NOT NULL,
+      mesa_id INTEGER NOT NULL, produto_id TEXT NOT NULL, nome TEXT NOT NULL,
+      preco_centavos INTEGER NOT NULL, quantidade INTEGER NOT NULL,
+      destino_producao TEXT NOT NULL, autorizado_por_id TEXT NOT NULL,
+      autorizado_por_nome TEXT NOT NULL, autorizado_em TEXT NOT NULL,
+      PRIMARY KEY (organizacao_id, cancelamento_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS cancelamentos_org_autorizado
+      ON cancelamentos_autorizados (organizacao_id, autorizado_em)`,
     `CREATE TABLE IF NOT EXISTS encerramentos_sem_consumo (
       organizacao_id TEXT NOT NULL, encerramento_id TEXT NOT NULL, mesa_id INTEGER NOT NULL,
       abertura_id TEXT NOT NULL, motivo TEXT NOT NULL, observacao TEXT NOT NULL,

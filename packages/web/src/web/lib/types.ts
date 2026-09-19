@@ -233,3 +233,47 @@ export interface Fechamento {
   /** Garcom que atendeu a mesa, para o gerente saber de quem foi o atendimento. */
   garcom_nome: string | null;
 }
+
+export interface RelatorioDiario {
+  data: string;
+  faturamentoCentavos: number;
+  mesasAtendidas: number;
+  ticketMedioCentavos: number;
+  servicoCentavos: number;
+  destinos: {
+    destino: Destino;
+    quantidade: number;
+    subtotalCentavos: number;
+    totalCentavos: number;
+  }[];
+  produtos: {
+    produto_id: string;
+    nome: string;
+    quantidade: number;
+    valorCentavos: number;
+  }[];
+  fechamentos: {
+    fechamento_id: string;
+    mesa_id: number;
+    hora: string;
+    totalCentavos: number;
+    funcionario_nome: string;
+  }[];
+  encerramentosSemConsumo: {
+    encerramento_id: string;
+    mesa_id: number;
+    motivo: MotivoSemConsumo;
+    observacao: string;
+    funcionario_nome: string;
+    encerrada_em: string;
+  }[];
+  cancelamentos: {
+    cancelamento_id: string;
+    mesa_id: number;
+    nome: string;
+    quantidade: number;
+    valorCentavos: number;
+    autorizado_por_nome: string;
+    autorizado_em: string;
+  }[];
+}

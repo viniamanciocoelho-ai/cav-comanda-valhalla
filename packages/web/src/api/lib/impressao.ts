@@ -5,11 +5,18 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../database";
 import { filaImpressoes, impressoras } from "../database/schema";
 import type { EstadoPersistido } from "./comanda-store";
-import { divisaoDoFechamento, montarFichaProducao, montarRecibo, serializarEscPos } from "../../web/lib/recibo";
+import {
+  divisaoDoFechamento,
+  montarFichaProducao,
+  montarRecibo,
+  montarRelatorioDiario,
+  serializarEscPos,
+} from "../../web/lib/recibo";
 import type {
   ConfiguracaoImpressora,
   DestinoImpressao,
   Impressao,
+  RelatorioDiario,
   StatusImpressao,
   Ticket,
   TipoImpressao,
@@ -191,6 +198,29 @@ export async function testarImpressora(
     .limit(1);
   const largura = larguraValida(configuracao?.largura ?? 80);
   const texto = textoTeste(destino, largura);
+  if (!configuracaoAtiva(configuracao)) {
+    return { modo: "navegador" as const, texto, largura };
+  }
+  await enviarEscPos(configuracao.host, configuracao.porta, texto);
+  return { modo: "rede" as const, texto: null, largura };
+}
+
+export async function imprimirRelatorioDiario(
+  organizacaoId: string,
+  relatorio: RelatorioDiario,
+) {
+  const [configuracao] = await db
+    .select()
+    .from(impressoras)
+    .where(
+      and(
+        eq(impressoras.organizacaoId, organizacaoId),
+        eq(impressoras.destino, "caixa"),
+      ),
+    )
+    .limit(1);
+  const largura = larguraValida(configuracao?.largura ?? 80);
+  const texto = montarRelatorioDiario(relatorio, largura);
   if (!configuracaoAtiva(configuracao)) {
     return { modo: "navegador" as const, texto, largura };
   }
