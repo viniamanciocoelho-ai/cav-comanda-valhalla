@@ -24,6 +24,22 @@ import { paraCentavos, paraReais, ratear } from "../lib/rateio";
 import { horaAgora } from "../lib/format";
 import { client } from "../lib/api";
 import { imprimirNoNavegador } from "../lib/recibo";
+import {
+  backoffMs,
+  carregarFalhas,
+  carregarFila,
+  carregarSnapshot,
+  codigoDoErro,
+  erroDeRede,
+  estadoConfirmadoParaResumo,
+  type Conectividade,
+  type FilaOfflineItem,
+  nomesDosItensAlterados,
+  reaplicarAcao,
+  salvarFalhas,
+  salvarFila,
+  salvarSnapshot,
+} from "../lib/offline";
 import { useSessao } from "./sessao-provider";
 import type {
   ConfiguracaoImpressora,
@@ -142,6 +158,17 @@ interface ComandaState {
   prontosParaEntrega: number;
   contasEmAberto: number;
   cancelamentosPendentes: OrderItem[];
+  conectividade: Conectividade;
+  acoesPendentes: number;
+  ultimaInformacaoEm: string | null;
+  falhasOffline: {
+    id: string;
+    acao: string;
+    mensagem: string;
+    itens: string[];
+    criadoEm: string;
+  }[];
+  reconectar: () => Promise<void>;
 
   // escrita
   abrirMesa: (mesa_id: number) => void;
@@ -224,6 +251,20 @@ function podeOperarCaixa(funcionario: Funcionario): boolean {
     funcionario.funcionario_perfil === "gerencia" ||
     funcionario.funcionario_perfil === "caixa"
   );
+}
+
+const ACOES_OFFLINE = new Set<Parameters<typeof client.comanda.persistir>[0]["acao"]>([
+  "abrir_mesa",
+  "alterar_comanda",
+  "enviar_pedido",
+  "solicitar_fechamento",
+]);
+
+function eAcaoOffline(
+  acao: Parameters<typeof client.comanda.persistir>[0]["acao"],
+  funcionario: Funcionario,
+) {
+  return funcionario.funcionario_perfil === "garcom" && ACOES_OFFLINE.has(acao);
 }
 
 /** Identifica a abertura da mesa: base da idempotencia do encerramento sem consumo. */
@@ -328,7 +369,7 @@ function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
 }
 
 export function ComandaProvider({ children }: { children: React.ReactNode }) {
-  const { sessao, sair } = useSessao();
+  const { sessao } = useSessao();
   const organizacaoId = sessao!.organizacaoId;
   const [dados, setDados] = useState<Dados>(() => estadoInicial());
   const espelho = useRef<Dados>(dados);
@@ -347,6 +388,20 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const escritasPendentes = useRef(0);
   const epocaPersistencia = useRef(0);
   const filaPersistencia = useRef<Promise<void>>(Promise.resolve());
+  const estadoConfirmado = useRef<Dados>(estadoInicial());
+  const [filaInicial] = useState(() => carregarFila(organizacaoId));
+  const filaOffline = useRef<FilaOfflineItem[]>(filaInicial);
+  const [dadosConfirmados, setDadosConfirmados] = useState<Dados>(
+    () => carregarSnapshot(organizacaoId)?.estado ?? estadoInicial(),
+  );
+  const [acoesPendentes, setAcoesPendentes] = useState(filaInicial.length);
+  const [conectividade, setConectividade] = useState<Conectividade>(
+    filaInicial.length ? "pendente" : "sincronizado",
+  );
+  const [falhasOffline, setFalhasOffline] = useState(() => carregarFalhas(organizacaoId));
+  const [ultimaInformacaoEm, setUltimaInformacaoEm] = useState<string | null>(null);
+  const drenandoFila = useRef(false);
+  const agendamentoDreno = useRef<number | null>(null);
   const [enviandoMesa, setEnviandoMesa] = useState<number | null>(null);
   const avisosImpressao = useRef(new Set<string>());
 
@@ -364,51 +419,263 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     Map<string, { mesa: Mesa; pessoas: Pessoa[]; itens: OrderItem[] }>
   >(new Map());
 
-  const carregarRemoto = useCallback(async (forcar = false) => {
-    const remoto = await client.comanda.estado();
-    if (remoto.versao >= versao.current && (forcar || escritasPendentes.current === 0)) {
+  const aplicarRemoto = useCallback(
+    (remoto: Awaited<ReturnType<typeof client.comanda.estado>>) => {
+      const base = remoto.estado as Dados;
+      estadoConfirmado.current = base;
+      setDadosConfirmados(base);
       versao.current = remoto.versao;
-      espelho.current = remoto.estado as Dados;
-      setDados(remoto.estado as Dados);
+      let local = base;
+      for (const acao of filaOffline.current) local = reaplicarAcao(local, acao).estado;
+      espelho.current = local;
+      setDados(local);
+      setCardapioAtual(remoto.cardapio);
+      setQuantidadeMesas(remoto.configuracao.quantidadeMesas);
+      setLarguraRecibo(remoto.configuracao.larguraRecibo === 58 ? 58 : 80);
+      setFuncionariosAtuais(remoto.funcionarios);
+      setProdutosAtuais(remoto.produtos);
+      setImpressorasAtuais(remoto.impressoras);
+      setImpressoesAtuais(remoto.impressoes);
+      setUltimaInformacaoEm(new Date().toISOString());
+      setConectividade(filaOffline.current.length ? "pendente" : "sincronizado");
+      salvarSnapshot({
+        organizacaoId,
+        versao: remoto.versao,
+        estado: base,
+        cardapio: remoto.cardapio,
+        produtos: remoto.produtos,
+        funcionarios: remoto.funcionarios,
+        impressoras: remoto.impressoras,
+        impressoes: remoto.impressoes,
+        quantidadeMesas: remoto.configuracao.quantidadeMesas,
+        larguraRecibo: remoto.configuracao.larguraRecibo === 58 ? 58 : 80,
+        atualizadoEm: new Date().toISOString(),
+      });
+      for (const impressao of remoto.impressoes) {
+        if (impressao.status !== "falhou") continue;
+        const chave = `${impressao.impressao_id}:${impressao.atualizado_em}`;
+        if (avisosImpressao.current.has(chave)) continue;
+        avisosImpressao.current.add(chave);
+        setToasts((atual) => [
+          ...atual.slice(-2),
+          {
+            id: Date.now() + Math.random(),
+            text: `A ${impressao.tipo === "ficha" ? "ficha" : "notinha"} da ${impressao.destino} não imprimiu. Reimprima na tela correspondente.`,
+            tone: "atencao",
+          },
+        ]);
+      }
+    },
+    [organizacaoId],
+  );
+
+  const carregarRemoto = useCallback(async (forcar = false) => {
+    try {
+      const remoto = await client.comanda.estado();
+      if (forcar || escritasPendentes.current === 0) aplicarRemoto(remoto);
+      hidratado.current = true;
+      setCarregando(false);
+    } catch (erro) {
+      const snapshot = carregarSnapshot(organizacaoId);
+      if (!snapshot) {
+        setCarregando(false);
+        throw erro;
+      }
+      estadoConfirmado.current = snapshot.estado;
+      versao.current = snapshot.versao;
+      let local = snapshot.estado;
+      for (const acao of filaOffline.current) local = reaplicarAcao(local, acao).estado;
+      espelho.current = local;
+      setDados(local);
+      setCardapioAtual(snapshot.cardapio);
+      setProdutosAtuais(snapshot.produtos);
+      setFuncionariosAtuais(snapshot.funcionarios);
+      setImpressorasAtuais(snapshot.impressoras);
+      setImpressoesAtuais(snapshot.impressoes);
+      setQuantidadeMesas(snapshot.quantidadeMesas);
+      setLarguraRecibo(snapshot.larguraRecibo);
+      setUltimaInformacaoEm(snapshot.atualizadoEm);
+      setConectividade("offline");
+      hidratado.current = true;
+      setCarregando(false);
+      throw erro;
     }
-    setCardapioAtual(remoto.cardapio);
-    setQuantidadeMesas(remoto.configuracao.quantidadeMesas);
-    setLarguraRecibo(remoto.configuracao.larguraRecibo === 58 ? 58 : 80);
-    setFuncionariosAtuais(remoto.funcionarios);
-    setProdutosAtuais(remoto.produtos);
-    setImpressorasAtuais(remoto.impressoras);
-    setImpressoesAtuais(remoto.impressoes);
-    for (const impressao of remoto.impressoes) {
-      if (impressao.status !== "falhou") continue;
-      const chave = `${impressao.impressao_id}:${impressao.atualizado_em}`;
-      if (avisosImpressao.current.has(chave)) continue;
-      avisosImpressao.current.add(chave);
-      setToasts((atual) => [
-        ...atual.slice(-2),
-        {
-          id: Date.now() + Math.random(),
-          text: `A ${impressao.tipo === "ficha" ? "ficha" : "notinha"} da ${impressao.destino} não imprimiu. Reimprima na tela correspondente.`,
-          tone: "atencao",
-        },
-      ]);
+  }, [aplicarRemoto, organizacaoId]);
+
+  const drenarFila = useCallback(async () => {
+    if (drenandoFila.current || !filaOffline.current.length || !hidratado.current) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setConectividade("offline");
+      return;
     }
-    hidratado.current = true;
-    setCarregando(false);
-  }, []);
+    drenandoFila.current = true;
+    try {
+      while (filaOffline.current.length) {
+        const atual = filaOffline.current[0];
+        if (!atual) break;
+        if (atual.proximaTentativaEm > Date.now()) {
+          if (agendamentoDreno.current === null) {
+            agendamentoDreno.current = window.setTimeout(() => {
+              agendamentoDreno.current = null;
+              void drenarFila();
+            }, atual.proximaTentativaEm - Date.now());
+          }
+          break;
+        }
+        try {
+          const resultado = await client.comanda.persistir({
+            versao: versao.current,
+            acao: atual.acao,
+            entidadeId: atual.entidadeId,
+            estado: atual.depois,
+          });
+          versao.current = resultado.versao;
+          estadoConfirmado.current = atual.depois;
+          setDadosConfirmados(atual.depois);
+          filaOffline.current = filaOffline.current.slice(1);
+          salvarFila(organizacaoId, filaOffline.current);
+          setAcoesPendentes(filaOffline.current.length);
+          setConectividade(filaOffline.current.length ? "pendente" : "sincronizado");
+          setDados(atual.depois);
+          espelho.current = atual.depois;
+        } catch (erro) {
+          const codigo = codigoDoErro(erro);
+          if (codigo === "CONFLICT" || /atualizado em outro dispositivo|conflict/i.test(String(erro))) {
+            try {
+              const remoto = await client.comanda.estado();
+              aplicarRemoto(remoto);
+              const rebase = reaplicarAcao(remoto.estado as Dados, atual);
+              if (rebase.conflitos.length) {
+                const falha = {
+                  id: atual.id,
+                  acao: atual.acao,
+                  mensagem: "A operação entrou em conflito com uma alteração feita em outro dispositivo.",
+                  itens: nomesDosItensAlterados(atual),
+                  criadoEm: new Date().toISOString(),
+                };
+                const falhas = [...falhasOffline, falha].slice(-20);
+                setFalhasOffline(falhas);
+                salvarFalhas(organizacaoId, falhas);
+                filaOffline.current = filaOffline.current.slice(1);
+                salvarFila(organizacaoId, filaOffline.current);
+                setAcoesPendentes(filaOffline.current.length);
+                setConectividade(filaOffline.current.length ? "pendente" : "sincronizado");
+                continue;
+              }
+              const atualizado = { ...atual, antes: remoto.estado as Dados, depois: rebase.estado };
+              filaOffline.current = [atualizado, ...filaOffline.current.slice(1)];
+              salvarFila(organizacaoId, filaOffline.current);
+              continue;
+            } catch {
+              setConectividade("offline");
+              break;
+            }
+          }
+          if (erroDeRede(erro)) {
+            const atualizado = {
+              ...atual,
+              tentativas: atual.tentativas + 1,
+              proximaTentativaEm: Date.now() + backoffMs(atual.tentativas),
+            };
+            filaOffline.current = [atualizado, ...filaOffline.current.slice(1)];
+            salvarFila(organizacaoId, filaOffline.current);
+            setConectividade("offline");
+            break;
+          }
+          const falha = {
+            id: atual.id,
+            acao: atual.acao,
+            mensagem: erro instanceof Error ? erro.message : "O servidor recusou a operação.",
+            itens: nomesDosItensAlterados(atual),
+            criadoEm: new Date().toISOString(),
+          };
+          const falhas = [...falhasOffline, falha].slice(-20);
+          setFalhasOffline(falhas);
+          salvarFalhas(organizacaoId, falhas);
+          filaOffline.current = filaOffline.current.slice(1);
+          salvarFila(organizacaoId, filaOffline.current);
+          setAcoesPendentes(filaOffline.current.length);
+          const remoto = await client.comanda.estado().catch(() => null);
+          if (remoto) aplicarRemoto(remoto);
+          setToasts((atualToasts) => [
+            ...atualToasts.slice(-2),
+            { id: Date.now() + Math.random(), text: falha.mensagem, tone: "atencao" },
+          ]);
+        }
+      }
+    } finally {
+      drenandoFila.current = false;
+    }
+  }, [aplicarRemoto, falhasOffline, organizacaoId]);
 
   useEffect(() => {
-    // A carga inicial sincroniza a sessao com a API antes de habilitar persistencia.
-    // oxlint-disable-next-line react/set-state-in-effect
-    void carregarRemoto().catch(() => sair());
+    const snapshot = carregarSnapshot(organizacaoId);
+    if (snapshot) {
+      estadoConfirmado.current = snapshot.estado;
+      // oxlint-disable-next-line react/set-state-in-effect
+      setDadosConfirmados(snapshot.estado);
+      versao.current = snapshot.versao;
+      espelho.current = snapshot.estado;
+      setDados(snapshot.estado);
+      setCardapioAtual(snapshot.cardapio);
+      setProdutosAtuais(snapshot.produtos);
+      setFuncionariosAtuais(snapshot.funcionarios);
+      setImpressorasAtuais(snapshot.impressoras);
+      setImpressoesAtuais(snapshot.impressoes);
+      setQuantidadeMesas(snapshot.quantidadeMesas);
+      setLarguraRecibo(snapshot.larguraRecibo);
+      setUltimaInformacaoEm(snapshot.atualizadoEm);
+      setConectividade("offline");
+      hidratado.current = true;
+      setCarregando(false);
+    }
+    void carregarRemoto().catch(() => undefined);
+    void drenarFila();
+    const mudouConexao = () => {
+      if (navigator.onLine) void drenarFila();
+      else setConectividade("offline");
+    };
+    window.addEventListener("online", mudouConexao);
+    window.addEventListener("offline", mudouConexao);
     const intervalo = window.setInterval(() => {
-      if (escritasPendentes.current === 0) void carregarRemoto().catch(() => undefined);
+      if (escritasPendentes.current === 0) {
+        void carregarRemoto().catch(() => undefined);
+        void drenarFila();
+      }
     }, 3_000);
-    return () => window.clearInterval(intervalo);
-  }, [carregarRemoto, sair]);
+    return () => {
+      window.clearInterval(intervalo);
+      window.removeEventListener("online", mudouConexao);
+      window.removeEventListener("offline", mudouConexao);
+    };
+  }, [carregarRemoto, drenarFila, organizacaoId]);
 
   const persistir = useCallback(
-    (proximo: Dados, acao: Parameters<typeof client.comanda.persistir>[0]["acao"]) => {
+    (
+      proximo: Dados,
+      acao: Parameters<typeof client.comanda.persistir>[0]["acao"],
+      antes: Dados,
+    ) => {
       if (!hidratado.current) return;
+      if (eAcaoOffline(acao, funcionarioAtivo)) {
+        const registro: FilaOfflineItem = {
+          id: `${organizacaoId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          organizacaoId,
+          acao,
+          entidadeId: proximo.mesas.find((mesa) => mesa.status !== "livre")?.mesa_id.toString(),
+          antes,
+          depois: proximo,
+          tentativas: 0,
+          proximaTentativaEm: 0,
+          criadoEm: new Date().toISOString(),
+        };
+        filaOffline.current = [...filaOffline.current, registro];
+        salvarFila(organizacaoId, filaOffline.current);
+        setAcoesPendentes(filaOffline.current.length);
+        setConectividade("pendente");
+        void drenarFila();
+        return;
+      }
       const epoca = epocaPersistencia.current;
       escritasPendentes.current += 1;
       filaPersistencia.current = filaPersistencia.current
@@ -421,6 +688,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
             estado: proximo,
           });
           versao.current = resultado.versao;
+          estadoConfirmado.current = proximo;
+          setDadosConfirmados(proximo);
+          setConectividade("sincronizado");
         })
         .catch(async () => {
           epocaPersistencia.current += 1;
@@ -428,32 +698,34 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           travaEnvio.current.clear();
           travaTicket.current.clear();
           setEnviandoMesa(null);
+          setConectividade("offline");
           setToasts((atual) => [
             ...atual.slice(-2),
             {
               id: Date.now(),
-              text: "Não foi possível confirmar a alteração. O estado mais recente foi recarregado.",
+              text: "Não foi possível confirmar a alteração. A última informação conhecida foi mantida.",
               tone: "atencao",
             },
           ]);
-          await carregarRemoto(true);
+          await carregarRemoto(true).catch(() => undefined);
         })
         .finally(() => {
           escritasPendentes.current = Math.max(0, escritasPendentes.current - 1);
         });
     },
-    [carregarRemoto],
+    [carregarRemoto, drenarFila, funcionarioAtivo, organizacaoId],
   );
 
   const aplicar = useCallback((
     fn: (prev: Dados) => Dados,
     acao: Parameters<typeof client.comanda.persistir>[0]["acao"] = "alterar_comanda",
   ) => {
-    const proximo = fn(espelho.current);
+    const antes = espelho.current;
+    const proximo = fn(antes);
     if (proximo === espelho.current) return;
     espelho.current = proximo;
     setDados(proximo);
-    persistir(proximo, acao);
+    persistir(proximo, acao, antes);
   }, [persistir]);
 
   const novoId = useCallback((prefixo: string) => {
@@ -502,7 +774,15 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [dados.pessoas],
   );
 
-  const resumo = useCallback((mesa_id: number) => calcularResumo(dados, mesa_id), [dados]);
+  const dadosParaResumo = estadoConfirmadoParaResumo(
+    conectividade,
+    dadosConfirmados,
+    dados,
+  );
+  const resumo = useCallback(
+    (mesa_id: number) => calcularResumo(dadosParaResumo, mesa_id),
+    [dadosParaResumo],
+  );
 
   const avaliarSemConsumo = useCallback(
     (mesa_id: number) => avaliarSemConsumoDe(dados, mesa_id, funcionarioAtivo),
@@ -536,12 +816,12 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   );
 
   const contasEmAberto = useMemo(() => {
-    return dados.mesas.reduce((soma, mesa) => {
+    return dadosParaResumo.mesas.reduce((soma, mesa) => {
       if (mesa.status === "livre") return soma;
-      if (mesa.ativa) return soma + calcularResumo(dados, mesa.mesa_id).total;
+      if (mesa.ativa) return soma + calcularResumo(dadosParaResumo, mesa.mesa_id).total;
       return soma + mesa.totalFixo;
     }, 0);
-  }, [dados]);
+  }, [dadosParaResumo]);
 
   // ----------------------------------------------------------------- escrita
 
@@ -1387,6 +1667,11 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [carregarRemoto, notificar],
   );
 
+  const reconectar = useCallback(async () => {
+    await carregarRemoto(true).catch(() => undefined);
+    await drenarFila();
+  }, [carregarRemoto, drenarFila]);
+
   const valor: ComandaState = {
     perfilAtivo: funcionarioAtivo.funcionario_perfil,
     funcionarioAtivo,
@@ -1427,6 +1712,11 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     prontosParaEntrega,
     contasEmAberto,
     cancelamentosPendentes,
+    conectividade,
+    acoesPendentes,
+    ultimaInformacaoEm,
+    falhasOffline,
+    reconectar,
 
     abrirMesa,
     adicionarPessoa,

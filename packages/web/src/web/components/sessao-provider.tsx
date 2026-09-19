@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { Funcionario } from "../lib/types";
 import { client, SESSION_TOKEN_KEY } from "../lib/api";
+import { carregarSessaoOffline, salvarSessaoOffline } from "../lib/offline";
 
 interface Sessao {
   token: string;
@@ -34,9 +35,19 @@ export function SessaoProvider({ children }: { children: React.ReactNode }) {
           organizacaoId: resultado.organizacaoId,
           funcionario: resultado.funcionario,
         });
+        salvarSessaoOffline({
+          token,
+          organizacaoId: resultado.organizacaoId,
+          funcionario: resultado.funcionario,
+        });
       })
       .catch(() => {
-        window.localStorage.removeItem(SESSION_TOKEN_KEY);
+        const conhecida = carregarSessaoOffline(token);
+        if (conhecida) {
+          setSessao(conhecida);
+        } else {
+          window.localStorage.removeItem(SESSION_TOKEN_KEY);
+        }
       })
       .finally(() => setVerificando(false));
   }, []);
@@ -44,6 +55,7 @@ export function SessaoProvider({ children }: { children: React.ReactNode }) {
   async function entrar(organizacao: string, pin: string) {
     const resultado = await client.auth.login({ organizacao, pin });
     window.localStorage.setItem(SESSION_TOKEN_KEY, resultado.token);
+    salvarSessaoOffline(resultado);
     setSessao(resultado);
     setVerificando(false);
   }

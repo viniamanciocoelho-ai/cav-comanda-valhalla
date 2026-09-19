@@ -8,10 +8,12 @@ import {
   LayoutGrid,
   Moon,
   ReceiptText,
+  RefreshCw,
   ScrollText,
   SlidersHorizontal,
   Sun,
   Wallet,
+  WifiOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { perfilNome } from "../lib/format";
@@ -214,6 +216,71 @@ function BarraSuperior({
   );
 }
 
+function StatusConexao() {
+  const {
+    conectividade,
+    acoesPendentes,
+    ultimaInformacaoEm,
+    falhasOffline,
+    reconectar,
+  } = useComanda();
+  const pendente = conectividade === "pendente";
+  const offline = conectividade === "offline";
+  const texto = offline
+    ? "Sem conexão"
+    : pendente
+      ? `Pendente · ${acoesPendentes} ${acoesPendentes === 1 ? "ação" : "ações"}`
+      : "Sincronizado";
+
+  return (
+    <section
+      className={`mb-4 grid gap-2 rounded-md border px-3 py-2 text-[12px] ${
+        offline
+          ? "border-ember/60 bg-ember/10 text-parchment"
+          : pendente
+            ? "border-gold/60 bg-gold/10 text-parchment"
+            : "border-moss/50 bg-moss/10 text-parchment"
+      }`}
+      aria-live="polite"
+      data-testid="status-conexao"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        {offline ? <WifiOff className="size-4 shrink-0" /> : null}
+        <span className="font-display tracking-[0.1em] uppercase">{texto}</span>
+        {offline ? (
+          <button
+            type="button"
+            onClick={() => void reconectar()}
+            className="text-gold ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 hover:bg-surface-2"
+          >
+            <RefreshCw className="size-3.5" />
+            Tentar novamente
+          </button>
+        ) : null}
+      </div>
+      {offline && ultimaInformacaoEm ? (
+        <p className="text-muted">
+          Última informação conhecida:{" "}
+          {new Date(ultimaInformacaoEm).toLocaleString("pt-BR", {
+            dateStyle: "short",
+            timeStyle: "short",
+          })}
+          .
+        </p>
+      ) : null}
+      {falhasOffline.length ? (
+        <ul className="text-ember grid gap-1" aria-label="Operações que precisam de atenção">
+          {falhasOffline.slice(-3).map((falha) => (
+            <li key={falha.id}>
+              {falha.mensagem} {falha.itens.length ? falha.itens.join("; ") : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 export function AppShell({
   titulo,
   subtitulo,
@@ -266,6 +333,7 @@ export function AppShell({
           onTrocarPerfil={() => setPerfilAberto(true)}
         />
         <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pt-5 pb-[calc(72px+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-12">
+          <StatusConexao />
           {children}
         </main>
       </div>
