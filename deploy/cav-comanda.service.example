@@ -1,0 +1,21 @@
+[Unit]
+Description=CAV Comanda Valhalla
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cav-comanda
+Group=cav-comanda
+WorkingDirectory=/CAMINHO/ABSOLUTO/cav-comanda-valhalla
+EnvironmentFile=/CAMINHO/ABSOLUTO/cav-comanda-valhalla/.env
+ExecStartPre=/usr/local/bin/bun run deploy:setup
+ExecStart=/usr/local/bin/bun packages/web/src/server.ts
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

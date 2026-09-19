@@ -1,5 +1,3 @@
-const ports = require("./__ports.cjs");
-
 module.exports = {
   apps: [
     {
@@ -12,9 +10,6 @@ module.exports = {
       instances: 1,
       autorestart: true,
       restart_delay: 1000,
-      env: {
-        PORT: ports.website,
-      },
     },
   ],
 };
