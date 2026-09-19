@@ -14,7 +14,7 @@ export function resolverArquivoEstatico(
   }
   if (caminhoDecodificado.includes("\0")) return null;
 
-  const caminhoSolicitado = caminhoDecodificado.replace(/^[/\\]+/, "");
+  const caminhoSolicitado = caminhoDecodificado.replaceAll("\\", "/").replace(/^\/+/, "");
   if (!caminhoSolicitado) {
     return resolve(indexPath);
   }
