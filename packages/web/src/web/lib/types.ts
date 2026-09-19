@@ -2,6 +2,14 @@
 // Cada registro carrega identificadores estaveis e autoria para persistencia auditavel.
 
 export type Destino = "cozinha" | "bar";
+export type DestinoImpressao = Destino | "caixa";
+export type TipoImpressao = "ficha" | "recibo";
+export type StatusImpressao =
+  | "pendente"
+  | "imprimindo"
+  | "impresso"
+  | "falhou"
+  | "sem_configuracao";
 
 /** Estados de um item da comanda. */
 export type ItemStatus =
@@ -100,6 +108,29 @@ export interface MenuItem {
 
 export interface ProdutoConfiguracao extends MenuItem {
   ativo: boolean;
+}
+
+export interface ConfiguracaoImpressora {
+  destino: DestinoImpressao;
+  nome: string;
+  host: string;
+  porta: number;
+  largura: 58 | 80;
+  ativa: boolean;
+}
+
+export interface Impressao {
+  organizacao_id: string;
+  impressao_id: string;
+  destino: DestinoImpressao;
+  tipo: TipoImpressao;
+  referencia_id: string;
+  mesa_id: number;
+  status: StatusImpressao;
+  tentativas: number;
+  ultimo_erro: string | null;
+  criado_em: string;
+  atualizado_em: string;
 }
 
 export interface TicketLinha {

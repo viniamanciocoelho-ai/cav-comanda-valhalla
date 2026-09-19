@@ -1,7 +1,7 @@
 // Registro persistido de fechamentos e liberações sem consumo da organização autenticada.
 
 import { useLocation } from "wouter";
-import { DoorClosed, FileCheck2, ReceiptText } from "lucide-react";
+import { DoorClosed, FileCheck2, Printer, ReceiptText } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
@@ -17,7 +17,7 @@ import {
 
 export default function FechamentosPage() {
   const [, navegar] = useLocation();
-  const { fechamentos, encerramentosSemConsumo } = useComanda();
+  const { fechamentos, encerramentosSemConsumo, impressoes, reimprimir } = useComanda();
 
   const somaTotal = fechamentos.reduce((soma, f) => soma + f.total, 0);
   const somaServico = fechamentos.reduce((soma, f) => soma + f.servico, 0);
@@ -76,6 +76,22 @@ export default function FechamentosPage() {
                   <p className="font-display vh-tabular text-gold-bright text-[22px] tracking-[0.03em]">
                     {money(registro.total)}
                   </p>
+                  {(() => {
+                    const impressao = impressoes.find(
+                      (item) =>
+                        item.tipo === "recibo" && item.referencia_id === registro.fechamento_id,
+                    );
+                    return impressao ? (
+                      <Action
+                        variante="tracejada"
+                        onClick={() => void reimprimir(impressao.impressao_id)}
+                        data-testid={`reimprimir-recibo-${registro.fechamento_id}`}
+                      >
+                        <Printer className="size-4" />
+                        Reimprimir recibo
+                      </Action>
+                    ) : null;
+                  })()}
                 </div>
 
                 <div className="grid gap-4 px-4 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto]">

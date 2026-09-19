@@ -23,11 +23,14 @@ import {
 import { paraCentavos, paraReais, ratear } from "../lib/rateio";
 import { horaAgora } from "../lib/format";
 import { client } from "../lib/api";
+import { imprimirNoNavegador } from "../lib/recibo";
 import { useSessao } from "./sessao-provider";
 import type {
+  ConfiguracaoImpressora,
   EncerramentoSemConsumo,
   Fechamento,
   Funcionario,
+  Impressao,
   ItemStatus,
   LinhaDivisao,
   Mesa,
@@ -112,6 +115,11 @@ interface ComandaState {
     ativo: boolean;
   }) => Promise<void>;
   alterarPin: (pinAtual: string, pinNovo: string) => Promise<void>;
+  impressoras: ConfiguracaoImpressora[];
+  impressoes: Impressao[];
+  salvarImpressora: (entrada: ConfiguracaoImpressora) => Promise<void>;
+  testarImpressora: (destino: ConfiguracaoImpressora["destino"]) => Promise<void>;
+  reimprimir: (impressao_id: string) => Promise<void>;
 
   // dados
   mesas: Mesa[];
@@ -331,6 +339,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const [quantidadeMesas, setQuantidadeMesas] = useState(15);
   const [larguraRecibo, setLarguraRecibo] = useState<58 | 80>(80);
   const [funcionariosAtuais, setFuncionariosAtuais] = useState<Funcionario[]>([]);
+  const [impressorasAtuais, setImpressorasAtuais] = useState<ConfiguracaoImpressora[]>([]);
+  const [impressoesAtuais, setImpressoesAtuais] = useState<Impressao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const versao = useRef(0);
   const hidratado = useRef(false);
@@ -338,6 +348,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const epocaPersistencia = useRef(0);
   const filaPersistencia = useRef<Promise<void>>(Promise.resolve());
   const [enviandoMesa, setEnviandoMesa] = useState<number | null>(null);
+  const avisosImpressao = useRef(new Set<string>());
 
   // Sequencial para ids unicos, mesmo com dois lancamentos no mesmo milissegundo.
   const sequencia = useRef(0);
@@ -365,6 +376,22 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     setLarguraRecibo(remoto.configuracao.larguraRecibo === 58 ? 58 : 80);
     setFuncionariosAtuais(remoto.funcionarios);
     setProdutosAtuais(remoto.produtos);
+    setImpressorasAtuais(remoto.impressoras);
+    setImpressoesAtuais(remoto.impressoes);
+    for (const impressao of remoto.impressoes) {
+      if (impressao.status !== "falhou") continue;
+      const chave = `${impressao.impressao_id}:${impressao.atualizado_em}`;
+      if (avisosImpressao.current.has(chave)) continue;
+      avisosImpressao.current.add(chave);
+      setToasts((atual) => [
+        ...atual.slice(-2),
+        {
+          id: Date.now() + Math.random(),
+          text: `A ${impressao.tipo === "ficha" ? "ficha" : "notinha"} da ${impressao.destino} não imprimiu. Reimprima na tela correspondente.`,
+          tone: "atencao",
+        },
+      ]);
+    }
     hidratado.current = true;
     setCarregando(false);
   }, []);
@@ -1326,6 +1353,40 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     await client.comanda.pinAlterar({ pinAtual, pinNovo });
   }, []);
 
+  const salvarImpressora = useCallback(
+    async (entrada: ConfiguracaoImpressora) => {
+      await client.impressao.impressoraSalvar(entrada);
+      await carregarRemoto(true);
+    },
+    [carregarRemoto],
+  );
+
+  const testarImpressora = useCallback(
+    async (destino: ConfiguracaoImpressora["destino"]) => {
+      const resultado = await client.impressao.impressoraTestar({ destino });
+      if (resultado.modo === "navegador") {
+        if (!resultado.texto) throw new Error("Não foi possível montar o teste de impressão.");
+        imprimirNoNavegador(resultado.texto, resultado.largura);
+        return;
+      }
+    },
+    [],
+  );
+
+  const reimprimir = useCallback(
+    async (impressao_id: string) => {
+      const resultado = await client.impressao.impressaoReimprimir({ impressaoId: impressao_id });
+      if (resultado.modo === "navegador") {
+        imprimirNoNavegador(resultado.texto, resultado.largura);
+        notificar("Reimpressão aberta no navegador.", "info");
+      } else {
+        notificar("Reimpressão enviada para a fila da impressora.", "sucesso");
+      }
+      await carregarRemoto(true);
+    },
+    [carregarRemoto, notificar],
+  );
+
   const valor: ComandaState = {
     perfilAtivo: funcionarioAtivo.funcionario_perfil,
     funcionarioAtivo,
@@ -1341,6 +1402,11 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     salvarProduto,
     salvarFuncionario,
     alterarPin,
+    impressoras: impressorasAtuais,
+    impressoes: impressoesAtuais,
+    salvarImpressora,
+    testarImpressora,
+    reimprimir,
 
     mesas: dados.mesas,
     pessoas: dados.pessoas,

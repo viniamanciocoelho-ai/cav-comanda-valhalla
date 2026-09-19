@@ -1,14 +1,20 @@
 // Configuracao operacional da organizacao autenticada.
 
-import { useState } from "react";
-import { KeyRound, Moon, Save, Sun, UserPlus, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { KeyRound, Moon, Printer, Save, Sun, UserPlus, Users } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
 import { SectionHeading, StatusPill } from "../components/ui/pieces";
 import { useTema } from "../components/theme-provider";
 import { MENU_CATEGORIAS } from "../lib/types";
-import type { Destino, Perfil, ProdutoConfiguracao } from "../lib/types";
+import type {
+  ConfiguracaoImpressora,
+  Destino,
+  DestinoImpressao,
+  Perfil,
+  ProdutoConfiguracao,
+} from "../lib/types";
 
 const perfis: { value: Perfil; label: string }[] = [
   { value: "garcom", label: "Garçom" },
@@ -36,6 +42,28 @@ function campoProduto(produto?: ProdutoConfiguracao) {
   };
 }
 
+const destinosImpressao: { value: DestinoImpressao; label: string }[] = [
+  { value: "bar", label: "Bar" },
+  { value: "cozinha", label: "Cozinha" },
+  { value: "caixa", label: "Caixa" },
+];
+
+function campoImpressora(
+  destino: DestinoImpressao,
+  configuracao?: ConfiguracaoImpressora,
+): ConfiguracaoImpressora {
+  return (
+    configuracao ?? {
+      destino,
+      nome: `Impressora do ${destino}`,
+      host: "",
+      porta: 9100,
+      largura: 80,
+      ativa: false,
+    }
+  );
+}
+
 export default function ConfiguracaoPage() {
   const { tema, alternarTema } = useTema();
   const {
@@ -44,9 +72,12 @@ export default function ConfiguracaoPage() {
     larguraRecibo,
     produtos,
     funcionarios,
+    impressoras,
     configurarOperacao,
     salvarProduto,
     salvarFuncionario,
+    salvarImpressora,
+    testarImpressora,
     alterarPin,
     notificar,
   } = useComanda();
@@ -65,6 +96,16 @@ export default function ConfiguracaoPage() {
   const [pinAtual, setPinAtual] = useState("");
   const [pinNovo, setPinNovo] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [impressoraDestino, setImpressoraDestino] = useState<DestinoImpressao>("bar");
+  const [impressora, setImpressora] = useState(() => campoImpressora("bar"));
+
+  useEffect(() => {
+    const configuracao = impressoras.find((item) => item.destino === impressoraDestino);
+    if (!configuracao) return;
+    // A configuração remota é a fonte de verdade após salvar ou trocar de destino.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setImpressora(campoImpressora(impressoraDestino, configuracao));
+  }, [impressoraDestino, impressoras]);
 
   async function executar(tarefa: () => Promise<void>, sucesso: string) {
     setSalvando(true);
@@ -149,6 +190,124 @@ export default function ConfiguracaoPage() {
             <Save className="size-4" />
             Salvar operação
           </Action>
+        </section>
+
+        <section className="border-line bg-surface rounded-md border p-5 lg:col-span-2">
+          <SectionHeading
+            eyebrow="Impressão térmica"
+            title="Destinos de impressão"
+            hint="Cada destino usa uma térmica de rede na porta 9100. Sem configuração, o teste e a reimpressão usam o navegador."
+          />
+          <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <label className="text-muted text-[12px]">
+              Destino
+              <select
+                aria-label="Destino da impressora"
+                value={impressoraDestino}
+                onChange={(evento) => {
+                  const destino = evento.target.value as DestinoImpressao;
+                  setImpressoraDestino(destino);
+                  setImpressora(
+                    campoImpressora(destino, impressoras.find((item) => item.destino === destino)),
+                  );
+                }}
+                className="border-line bg-surface-2 text-parchment mt-2 min-h-11 w-full rounded-md border px-3 text-[14px]"
+              >
+                {destinosImpressao.map((destino) => (
+                  <option key={destino.value} value={destino.value}>
+                    {destino.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <input
+                aria-label="Nome da impressora"
+                placeholder="Nome da impressora"
+                value={impressora.nome}
+                onChange={(evento) =>
+                  setImpressora((atual) => ({ ...atual, nome: evento.target.value }))
+                }
+                className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px] sm:col-span-2"
+              />
+              <input
+                aria-label="Host da impressora"
+                placeholder="Host ou IP"
+                value={impressora.host}
+                onChange={(evento) =>
+                  setImpressora((atual) => ({ ...atual, host: evento.target.value }))
+                }
+                className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
+              />
+              <input
+                aria-label="Porta da impressora"
+                type="number"
+                min={1}
+                max={65535}
+                value={impressora.porta}
+                onChange={(evento) =>
+                  setImpressora((atual) => ({
+                    ...atual,
+                    porta: Number(evento.target.value),
+                  }))
+                }
+                className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
+              />
+              <select
+                aria-label="Largura da impressora"
+                value={impressora.largura}
+                onChange={(evento) =>
+                  setImpressora((atual) => ({
+                    ...atual,
+                    largura: Number(evento.target.value) === 58 ? 58 : 80,
+                  }))
+                }
+                className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
+              >
+                <option value={58}>58 mm</option>
+                <option value={80}>80 mm</option>
+              </select>
+              <label className="text-muted flex min-h-11 items-center gap-2 text-[12px]">
+                <input
+                  type="checkbox"
+                  aria-label="Impressora ativa"
+                  checked={impressora.ativa}
+                  onChange={(evento) =>
+                    setImpressora((atual) => ({ ...atual, ativa: evento.target.checked }))
+                  }
+                />
+                Impressora ativa
+              </label>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Action
+              variante="primaria"
+              disabled={salvando}
+              onClick={() =>
+                void executar(
+                  () => salvarImpressora(impressora),
+                  "Configuração da impressora salva.",
+                )
+              }
+            >
+              <Save className="size-4" />
+              Salvar impressora
+            </Action>
+            <Action
+              variante="tracejada"
+              disabled={salvando}
+              onClick={() =>
+                void executar(
+                  () => testarImpressora(impressoraDestino),
+                  "Teste de impressão concluído.",
+                )
+              }
+            >
+              <Printer className="size-4" />
+              Imprimir teste
+            </Action>
+          </div>
         </section>
 
         <section className="border-line bg-surface rounded-md border p-5">

@@ -93,7 +93,7 @@ function reservarTentativa(chave: string, limite: number): boolean {
   return true;
 }
 
-const autenticado = base.use(async ({ context, next }) => {
+export const autenticado = base.use(async ({ context, next }) => {
   await garantirOrganizacaoPadrao();
   const sessao = await obterSessao(context.headers.get("authorization"));
   if (!sessao) throw new ORPCError("UNAUTHORIZED");

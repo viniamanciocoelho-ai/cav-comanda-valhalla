@@ -89,6 +89,23 @@ async function criarEstrutura() {
       acao TEXT NOT NULL, entidade TEXT NOT NULL, entidade_id TEXT, criado_em TEXT NOT NULL
     )`,
     `CREATE INDEX IF NOT EXISTS auditoria_org_criado ON auditoria (organizacao_id, criado_em)`,
+    `CREATE TABLE IF NOT EXISTS impressoras (
+      organizacao_id TEXT NOT NULL, destino TEXT NOT NULL, nome TEXT NOT NULL,
+      host TEXT NOT NULL, porta INTEGER NOT NULL, largura INTEGER NOT NULL,
+      ativa INTEGER NOT NULL DEFAULT 0, criado_em TEXT NOT NULL, atualizado_em TEXT NOT NULL,
+      PRIMARY KEY (organizacao_id, destino)
+    )`,
+    `CREATE INDEX IF NOT EXISTS impressoras_org_ativa ON impressoras (organizacao_id, ativa)`,
+    `CREATE TABLE IF NOT EXISTS fila_impressoes (
+      organizacao_id TEXT NOT NULL, impressao_id TEXT NOT NULL, destino TEXT NOT NULL,
+      tipo TEXT NOT NULL, referencia_id TEXT NOT NULL, mesa_id INTEGER NOT NULL,
+      texto TEXT NOT NULL, largura INTEGER NOT NULL, status TEXT NOT NULL,
+      tentativas INTEGER NOT NULL DEFAULT 0, ultimo_erro TEXT, criado_em TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL, PRIMARY KEY (organizacao_id, impressao_id),
+      UNIQUE (organizacao_id, tipo, referencia_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS fila_impressoes_org_status
+      ON fila_impressoes (organizacao_id, status)`,
   ];
 
   for (const comando of comandos) {

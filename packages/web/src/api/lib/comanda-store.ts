@@ -6,7 +6,9 @@ import {
   encerramentosSemConsumo,
   fechamentos,
   fichasProducao,
+  filaImpressoes,
   funcionarios as funcionariosTabela,
+  impressoras,
   itensPedido,
   mesas,
   organizacoes,
@@ -23,6 +25,7 @@ import {
 } from "../../web/lib/operacao";
 import { ratear } from "../../web/lib/rateio";
 import type {
+  ConfiguracaoImpressora,
   EncerramentoSemConsumo,
   Fechamento,
   Funcionario,
@@ -33,6 +36,13 @@ import type {
   ProdutoConfiguracao,
   Ticket,
 } from "../../web/lib/types";
+import {
+  configuracoesImpressoras,
+  enfileirarImpressoesTx,
+  impressoesPublicas,
+  processarFila,
+  hostImpressoraValido,
+} from "./impressao";
 import { cardapioInicial } from "./cardapio-inicial";
 import { criarMesaVazia } from "./mesa-inicial";
 import {
@@ -553,6 +563,8 @@ export async function lerEstado(organizacaoId: string) {
     linhasCardapio,
     [configuracao],
     linhasFuncionarios,
+    linhasImpressoras,
+    linhasFilaImpressoes,
   ] = await Promise.all([
     db.select().from(versoesEstado).where(eq(versoesEstado.organizacaoId, organizacaoId)).limit(1),
     db.select().from(mesas).where(eq(mesas.organizacaoId, organizacaoId)),
@@ -570,6 +582,14 @@ export async function lerEstado(organizacaoId: string) {
       .select()
       .from(funcionariosTabela)
       .where(eq(funcionariosTabela.organizacaoId, organizacaoId)),
+    db
+      .select()
+      .from(impressoras)
+      .where(eq(impressoras.organizacaoId, organizacaoId)),
+    db
+      .select()
+      .from(filaImpressoes)
+      .where(eq(filaImpressoes.organizacaoId, organizacaoId)),
   ]);
 
   const estado: EstadoPersistido = {
@@ -663,6 +683,7 @@ export async function lerEstado(organizacaoId: string) {
     ),
   };
 
+  const larguraRecibo = configuracao?.larguraRecibo === 58 ? 58 : 80;
   return {
     organizacaoId,
     versao: versao?.versao ?? 0,
@@ -686,8 +707,10 @@ export async function lerEstado(organizacaoId: string) {
     })),
     configuracao: {
       quantidadeMesas: configuracao?.quantidadeMesas ?? 15,
-      larguraRecibo: configuracao?.larguraRecibo ?? 80,
+      larguraRecibo,
     },
+    impressoras: configuracoesImpressoras(linhasImpressoras, larguraRecibo),
+    impressoes: impressoesPublicas(linhasFilaImpressoes),
     funcionarios: linhasFuncionarios.map((funcionario) => ({
       funcionario_id: funcionario.funcionarioId,
       funcionario_nome: funcionario.nome,
@@ -1568,7 +1591,7 @@ export async function salvarEstado(
     acao,
     leituraAnterior.funcionarios,
   );
-  return db.transaction(async (tx) => {
+  const resultado = await db.transaction(async (tx) => {
     const proxima = esperado + 1;
     const resultado = await tx
       .update(versoesEstado)
@@ -1597,8 +1620,20 @@ export async function salvarEstado(
       entidadeId,
       criadoEm: agora(),
     });
-    return proxima;
+    const impressaoIds =
+      acao === "enviar_pedido" || acao === "fechar_conta"
+        ? await enfileirarImpressoesTx(
+            tx,
+            organizacaoId,
+            anterior,
+            estado,
+            leituraAnterior.configuracao.larguraRecibo === 58 ? 58 : 80,
+          )
+        : [];
+    return { versao: proxima, impressaoIds };
   });
+  if (resultado?.impressaoIds.length) processarFila(organizacaoId, resultado.impressaoIds);
+  return resultado?.versao ?? null;
 }
 
 export async function salvarConfiguracao(
@@ -1691,6 +1726,45 @@ export async function salvarProduto(
         ativo: produto.ativo,
       },
     });
+}
+
+export async function salvarImpressora(
+  organizacaoId: string,
+  entrada: ConfiguracaoImpressora,
+) {
+  const host = entrada.host.trim();
+  if (entrada.ativa && !hostImpressoraValido(host)) {
+    throw new Error("Informe um host válido para a impressora ativa.");
+  }
+  if (!Number.isInteger(entrada.porta) || entrada.porta < 1 || entrada.porta > 65_535) {
+    throw new Error("A porta da impressora deve estar entre 1 e 65535.");
+  }
+  const instante = agora();
+  await db
+    .insert(impressoras)
+    .values({
+      organizacaoId,
+      destino: entrada.destino,
+      nome: entrada.nome.trim(),
+      host,
+      porta: entrada.porta,
+      largura: entrada.largura,
+      ativa: entrada.ativa,
+      criadoEm: instante,
+      atualizadoEm: instante,
+    })
+    .onConflictDoUpdate({
+      target: [impressoras.organizacaoId, impressoras.destino],
+      set: {
+        nome: entrada.nome.trim(),
+        host,
+        porta: entrada.porta,
+        largura: entrada.largura,
+        ativa: entrada.ativa,
+        atualizadoEm: instante,
+      },
+    });
+  if (entrada.ativa) processarFila(organizacaoId);
 }
 
 export async function salvarFuncionario(

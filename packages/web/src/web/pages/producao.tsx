@@ -2,7 +2,7 @@
 // Tipografia grande porque a tela fica longe de quem opera. A producao nao ve valores.
 
 import { useState } from "react";
-import { Beer, Check, ChefHat, Flame, RotateCcw } from "lucide-react";
+import { Beer, Check, ChefHat, Flame, Printer, RotateCcw } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
@@ -31,10 +31,12 @@ function CartaoFicha({
   ficha,
   onAvancar,
   onVoltar,
+  onReimprimir,
 }: {
   ficha: Ticket;
   onAvancar: (ticket_id: string) => void;
   onVoltar: (ticket_id: string) => void;
+  onReimprimir: (ticket_id: string) => void;
 }) {
   const cor = ticketStatusColor[ficha.status];
   const acao = avanco[ficha.status];
@@ -127,6 +129,15 @@ function CartaoFicha({
             {ficha.status === "pronto" ? "Voltar para preparo" : "Voltar para a fila"}
           </Action>
         ) : null}
+        <Action
+          variante="tracejada"
+          full
+          onClick={() => onReimprimir(ficha.ticket_id)}
+          data-testid={`reimprimir-ficha-${ficha.ticket_id}`}
+        >
+          <Printer className="size-4" />
+          Reimprimir ficha
+        </Action>
       </div>
     </li>
   );
@@ -137,11 +148,13 @@ function Coluna({
   fichas,
   onAvancar,
   onVoltar,
+  onReimprimir,
 }: {
   destino: Destino;
   fichas: Ticket[];
   onAvancar: (ticket_id: string) => void;
   onVoltar: (ticket_id: string) => void;
+  onReimprimir: (ticket_id: string) => void;
 }) {
   const Icone = destino === "bar" ? Beer : ChefHat;
   const abertas = fichas.filter((f) => f.status === "enviado" || f.status === "preparando").length;
@@ -171,6 +184,7 @@ function Coluna({
               ficha={ficha}
               onAvancar={onAvancar}
               onVoltar={onVoltar}
+              onReimprimir={onReimprimir}
             />
           ))}
         </ul>
@@ -184,7 +198,7 @@ function Coluna({
 }
 
 export default function ProducaoPage() {
-  const { tickets, avancarTicket, voltarTicket } = useComanda();
+  const { tickets, avancarTicket, voltarTicket, reimprimir, impressoes } = useComanda();
   const [somenteAbertas, setSomenteAbertas] = useState(false);
 
   const lista = somenteAbertas
@@ -222,8 +236,25 @@ export default function ProducaoPage() {
           fichas={cozinha}
           onAvancar={avancarTicket}
           onVoltar={voltarTicket}
+          onReimprimir={(ticket_id) => {
+            const impressao = impressoes.find(
+              (item) => item.tipo === "ficha" && item.referencia_id === ticket_id,
+            );
+            if (impressao) void reimprimir(impressao.impressao_id);
+          }}
         />
-        <Coluna destino="bar" fichas={bar} onAvancar={avancarTicket} onVoltar={voltarTicket} />
+        <Coluna
+          destino="bar"
+          fichas={bar}
+          onAvancar={avancarTicket}
+          onVoltar={voltarTicket}
+          onReimprimir={(ticket_id) => {
+            const impressao = impressoes.find(
+              (item) => item.tipo === "ficha" && item.referencia_id === ticket_id,
+            );
+            if (impressao) void reimprimir(impressao.impressao_id);
+          }}
+        />
       </div>
     </AppShell>
   );

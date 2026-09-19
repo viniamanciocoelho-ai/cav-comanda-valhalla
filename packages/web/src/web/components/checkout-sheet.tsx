@@ -253,8 +253,8 @@ export function CheckoutSheet({
             Recibo simples
           </p>
           <p className="text-muted mt-1 text-[12px] leading-relaxed">
-            A notinha é um resumo do consumo. A impressão usa a impressora configurada no sistema
-            operacional.
+            A notinha é um resumo do consumo. O fechamento envia o recibo para a térmica do caixa;
+            sem ela, esta ação usa a impressão do navegador.
           </p>
         </div>
       </div>

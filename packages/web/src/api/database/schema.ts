@@ -236,3 +236,52 @@ export const auditoria = sqliteTable(
   },
   (table) => [index("auditoria_org_criado").on(table.organizacaoId, table.criadoEm)],
 );
+
+export const impressoras = sqliteTable(
+  "impressoras",
+  {
+    organizacaoId: text("organizacao_id").notNull(),
+    destino: text("destino", { enum: ["bar", "cozinha", "caixa"] }).notNull(),
+    nome: text("nome").notNull(),
+    host: text("host").notNull(),
+    porta: integer("porta").notNull(),
+    largura: integer("largura").notNull(),
+    ativa: integer("ativa", { mode: "boolean" }).notNull().default(false),
+    criadoEm: text("criado_em").notNull(),
+    atualizadoEm: text("atualizado_em").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.organizacaoId, table.destino] }),
+    index("impressoras_org_ativa").on(table.organizacaoId, table.ativa),
+  ],
+);
+
+export const filaImpressoes = sqliteTable(
+  "fila_impressoes",
+  {
+    organizacaoId: text("organizacao_id").notNull(),
+    impressaoId: text("impressao_id").notNull(),
+    destino: text("destino", { enum: ["bar", "cozinha", "caixa"] }).notNull(),
+    tipo: text("tipo", { enum: ["ficha", "recibo"] }).notNull(),
+    referenciaId: text("referencia_id").notNull(),
+    mesaId: integer("mesa_id").notNull(),
+    texto: text("texto").notNull(),
+    largura: integer("largura").notNull(),
+    status: text("status", {
+      enum: ["pendente", "imprimindo", "impresso", "falhou", "sem_configuracao"],
+    }).notNull(),
+    tentativas: integer("tentativas").notNull().default(0),
+    ultimoErro: text("ultimo_erro"),
+    criadoEm: text("criado_em").notNull(),
+    atualizadoEm: text("atualizado_em").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.organizacaoId, table.impressaoId] }),
+    uniqueIndex("fila_impressoes_org_referencia").on(
+      table.organizacaoId,
+      table.tipo,
+      table.referenciaId,
+    ),
+    index("fila_impressoes_org_status").on(table.organizacaoId, table.status),
+  ],
+);
