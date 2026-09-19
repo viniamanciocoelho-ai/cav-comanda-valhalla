@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRouterClient } from "../packages/web/node_modules/@orpc/server/dist/index.mjs";
-import { prepararBancoTeste } from "./test-database";
+import { PIN_GERENCIA_TESTE, prepararBancoTeste } from "./test-database";
 
 await prepararBancoTeste("fase1-api");
 const { router } = await import("../packages/web/src/api");
@@ -11,30 +11,105 @@ const publico = createRouterClient(router, {
 
 await assert.rejects(() => publico.auth.login({ organizacao: "valhalla", pin: "0000" }));
 
-const logins = await Promise.all(
-  [
-    ["1111", "gerencia"],
-    ["2222", "garcom"],
-    ["3333", "producao"],
-    ["4444", "caixa"],
-  ].map(async ([pin, perfil]) => {
-    const sessao = await publico.auth.login({ organizacao: "valhalla", pin });
-    assert.equal(sessao.funcionario.funcionario_perfil, perfil);
-    return sessao;
-  }),
-);
+const sessaoGerencia = await publico.auth.login({
+  organizacao: "valhalla",
+  pin: PIN_GERENCIA_TESTE,
+});
+assert.equal(sessaoGerencia.funcionario.funcionario_perfil, "gerencia");
 
 const gerencia = createRouterClient(router, {
   context: {
-    headers: new Headers({ authorization: `Bearer ${logins[0].token}` }),
+    headers: new Headers({ authorization: `Bearer ${sessaoGerencia.token}` }),
   },
 });
+
+const inicial = await gerencia.comanda.estado();
+assert.equal(inicial.organizacaoId, "valhalla");
+assert.equal(inicial.estado.mesas.length, 15);
+assert.equal(inicial.estado.itens.length, 0);
+assert.equal(inicial.estado.pessoas.length, 0);
+assert.equal(inicial.estado.tickets.length, 0);
+assert.equal(inicial.estado.fechamentos.length, 0);
+assert.equal("modoDemo" in inicial, false);
+assert.equal(
+  inicial.estado.mesas.every(
+    (mesa) =>
+      mesa.status === "livre" &&
+      !mesa.ativa &&
+      mesa.abertaEm === null &&
+      mesa.garcom_id === null &&
+      !("demonstracao" in mesa),
+  ),
+  true,
+);
+assert.equal(inicial.cardapio.length, 43);
+assert.equal(inicial.produtos.length, 43);
+assert.equal(inicial.funcionarios.length, 1);
+assert.equal(inicial.funcionarios[0]?.funcionario_nome, "Gerência");
+assert.equal(inicial.funcionarios[0]?.funcionario_perfil, "gerencia");
+assert.equal(inicial.funcionarios[0]?.ativo, true);
+assert.equal(inicial.cardapio.find((produto) => produto.produto_id === "m1")?.name, "CHOOP PIL 500ML");
+assert.equal(inicial.cardapio.find((produto) => produto.produto_id === "real-monster")?.price, 18);
+
+const produtoInicial = inicial.produtos.find((produto) => produto.produto_id === "m1");
+assert.ok(produtoInicial);
+await gerencia.comanda.produtoSalvar({ ...produtoInicial, ativo: false });
+const produtoDesativado = await gerencia.comanda.estado();
+assert.equal(
+  produtoDesativado.cardapio.some((produto) => produto.produto_id === "m1"),
+  false,
+);
+assert.equal(
+  produtoDesativado.produtos.find((produto) => produto.produto_id === "m1")?.ativo,
+  false,
+);
+await gerencia.comanda.produtoSalvar({ ...produtoInicial, ativo: true });
+
+const contas = [
+  {
+    funcionarioId: "f-atendimento",
+    nome: "Atendimento",
+    perfil: "garcom" as const,
+    pin: "5274",
+    ativo: true,
+  },
+  {
+    funcionarioId: "f-producao",
+    nome: "Produção",
+    perfil: "producao" as const,
+    pin: "6385",
+    ativo: true,
+  },
+  {
+    funcionarioId: "f-caixa",
+    nome: "Caixa",
+    perfil: "caixa" as const,
+    pin: "7496",
+    ativo: true,
+  },
+];
+for (const conta of contas) await gerencia.comanda.funcionarioSalvar(conta);
+
+const logins = [
+  sessaoGerencia,
+  await publico.auth.login({ organizacao: "valhalla", pin: contas[0].pin }),
+  await publico.auth.login({ organizacao: "valhalla", pin: contas[1].pin }),
+  await publico.auth.login({ organizacao: "valhalla", pin: contas[2].pin }),
+];
+assert.deepEqual(
+  logins.map((sessao) => sessao.funcionario.funcionario_perfil),
+  ["gerencia", "garcom", "producao", "caixa"],
+);
+
 const garcom = createRouterClient(router, {
   context: {
     headers: new Headers({ authorization: `Bearer ${logins[1].token}` }),
   },
 });
-const sessaoRevogavel = await publico.auth.login({ organizacao: "valhalla", pin: "4444" });
+const sessaoRevogavel = await publico.auth.login({
+  organizacao: "valhalla",
+  pin: contas[2].pin,
+});
 const clienteRevogavel = createRouterClient(router, {
   context: {
     headers: new Headers({ authorization: `Bearer ${sessaoRevogavel.token}` }),
@@ -42,16 +117,6 @@ const clienteRevogavel = createRouterClient(router, {
 });
 await clienteRevogavel.auth.logout();
 await assert.rejects(() => clienteRevogavel.comanda.estado());
-
-const inicial = await gerencia.comanda.estado();
-assert.equal(inicial.organizacaoId, "valhalla");
-assert.equal(inicial.estado.mesas.length, 15);
-assert.equal(inicial.estado.itens.length, 0);
-assert.equal(inicial.estado.pessoas.length, 0);
-assert.equal(inicial.modoDemo, false);
-assert.equal(inicial.cardapio.length, 43);
-assert.equal(inicial.cardapio.find((produto) => produto.produto_id === "m1")?.name, "CHOOP PIL 500ML");
-assert.equal(inicial.cardapio.find((produto) => produto.produto_id === "real-monster")?.price, 18);
 
 const mesa1 = inicial.estado.mesas.find((mesa) => mesa.mesa_id === 1);
 assert.ok(mesa1);
@@ -183,13 +248,6 @@ const configurada = await gerencia.comanda.configurar({
   larguraRecibo: 58,
 });
 assert.equal(configurada.versao, enviado.versao + 1);
-await assert.rejects(() =>
-  gerencia.comanda.persistir({
-    versao: configurada.versao,
-    acao: "reiniciar",
-    estado: inicial.estado,
-  }),
-);
 
 const persistido = await gerencia.comanda.estado();
 assert.equal(persistido.estado.mesas.find((mesa) => mesa.mesa_id === 1)?.ativa, true);
@@ -197,4 +255,77 @@ assert.equal(persistido.estado.mesas.length, 16);
 assert.equal(persistido.configuracao.larguraRecibo, 58);
 assert.equal(persistido.versao, configurada.versao);
 
-console.log("Fase 1 API: autenticação, persistência, envio e configuração aprovados.");
+await gerencia.comanda.funcionarioSalvar({
+  funcionarioId: contas[0].funcionarioId,
+  nome: "Atendimento principal",
+  perfil: "garcom",
+  ativo: true,
+});
+let equipe = await gerencia.comanda.estado();
+assert.equal(
+  equipe.funcionarios.find(
+    (funcionario) => funcionario.funcionario_id === contas[0].funcionarioId,
+  )?.funcionario_nome,
+  "Atendimento principal",
+);
+
+await gerencia.comanda.funcionarioSalvar({
+  funcionarioId: contas[0].funcionarioId,
+  nome: "Atendimento principal",
+  perfil: "garcom",
+  pin: "5318",
+  ativo: true,
+});
+await assert.rejects(() =>
+  publico.auth.login({ organizacao: "valhalla", pin: contas[0].pin }),
+);
+assert.equal(
+  (
+    await publico.auth.login({
+      organizacao: "valhalla",
+      pin: "5318",
+    })
+  ).funcionario.funcionario_id,
+  contas[0].funcionarioId,
+);
+
+await gerencia.comanda.funcionarioSalvar({
+  funcionarioId: contas[0].funcionarioId,
+  nome: "Atendimento principal",
+  perfil: "garcom",
+  ativo: false,
+});
+await assert.rejects(() =>
+  publico.auth.login({ organizacao: "valhalla", pin: "5318" }),
+);
+equipe = await gerencia.comanda.estado();
+assert.equal(
+  equipe.funcionarios.find(
+    (funcionario) => funcionario.funcionario_id === contas[0].funcionarioId,
+  )?.ativo,
+  false,
+);
+
+await gerencia.comanda.pinAlterar({
+  pinAtual: PIN_GERENCIA_TESTE,
+  pinNovo: "9753",
+});
+await assert.rejects(() =>
+  publico.auth.login({
+    organizacao: "valhalla",
+    pin: PIN_GERENCIA_TESTE,
+  }),
+);
+assert.equal(
+  (
+    await publico.auth.login({
+      organizacao: "valhalla",
+      pin: "9753",
+    })
+  ).funcionario.funcionario_perfil,
+  "gerencia",
+);
+
+console.log(
+  "Fase 1 API: bootstrap operacional, autenticação, PINs, equipe, cardápio e persistência aprovados.",
+);

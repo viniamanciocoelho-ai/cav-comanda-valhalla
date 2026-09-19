@@ -66,7 +66,6 @@ export const mesas = sqliteTable(
     mesaId: integer("mesa_id").notNull(),
     status: text("status", { enum: ["livre", "ocupada", "aguardando"] }).notNull(),
     ativa: integer("ativa", { mode: "boolean" }).notNull(),
-    demonstracao: integer("demonstracao", { mode: "boolean" }),
     pessoasFixas: integer("pessoas_fixas").notNull(),
     totalFixoCentavos: integer("total_fixo_centavos").notNull(),
     abertaEm: text("aberta_em"),

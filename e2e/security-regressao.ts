@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { validarTransicao, type EstadoPersistido } from "../packages/web/src/api/lib/comanda-store";
-import { funcionarios } from "../packages/web/src/web/lib/perfis";
+import { funcionarios } from "./fixtures-funcionarios";
 import type {
   Fechamento,
   Funcionario,
@@ -17,7 +17,7 @@ const mesa: Mesa = {
   pessoasFixas: 0,
   totalFixo: 0,
   abertaEm: new Date().toISOString(),
-  garcom_id: "f-rafael",
+  garcom_id: "f-atendimento",
   contaSolicitada: false,
   servicoIncluso: true,
 };
@@ -35,8 +35,8 @@ const item: OrderItem = {
   observacao: "",
   destino_producao: "bar",
   status: "enviado",
-  funcionario_id: "f-rafael",
-  funcionario_nome: "Rafael",
+  funcionario_id: "f-atendimento",
+  funcionario_nome: "Atendimento",
   funcionario_perfil: "garcom",
   criado_em: new Date().toISOString(),
   enviado_em: new Date().toISOString(),
@@ -76,8 +76,8 @@ const fechamentoMalicioso: Fechamento = {
   servicoIncluso: false,
   divisao: [{ pessoa_id: "m1-ana", pessoa: "Ana", valor: 15 }],
   nfce: "nao_solicitada",
-  funcionario_nome: "Rafael",
-  garcom_nome: "Rafael",
+  funcionario_nome: "Atendimento",
+  garcom_nome: "Atendimento",
 };
 
 const mesaLivre: Mesa = {
@@ -138,7 +138,7 @@ assert.throws(
 );
 
 const gerencia = perfil("Gerência");
-const rafael = perfil("Rafael");
+const atendimento = perfil("Atendimento");
 const encerradaEm = new Date();
 const encerramento = {
   organizacao_id: "valhalla",
@@ -176,7 +176,7 @@ assert.doesNotThrow(
       },
       gerencia,
       "desfazer_sem_consumo",
-      [gerencia, rafael],
+      [gerencia, atendimento],
     ),
   "desfazer preserva autoria valida do garcom que criou o rascunho",
 );
@@ -186,7 +186,7 @@ assert.throws(
     validarTransicao(
       base,
       { ...base, fechamentos: [fechamentoMalicioso] },
-      perfil("Rafael"),
+      perfil("Atendimento"),
       "alterar_comanda",
     ),
   /fechamento|caixa|permit/i,
@@ -201,7 +201,7 @@ assert.throws(
         ...base,
         itens: [{ ...item, price: 999 }],
       },
-      perfil("Cozinha e bar"),
+      perfil("Produção"),
       "mover_producao",
     ),
   /produção|item|alterar|permit/i,
@@ -231,7 +231,7 @@ assert.throws(
         ...base,
         itens: [{ ...item, quantidade: 99 }],
       },
-      perfil("Rafael"),
+      perfil("Atendimento"),
       "alterar_comanda",
     ),
   /rascunho|campos|permit/i,
@@ -263,8 +263,8 @@ const ticketAnterior: Ticket = {
     },
   ],
   itemIds: [item.item_id],
-  funcionario_id: "f-rafael",
-  funcionario_nome: "Rafael",
+  funcionario_id: "f-atendimento",
+  funcionario_nome: "Atendimento",
   criado_em: item.criado_em,
   enviado_em: item.enviado_em!,
   atualizado_em: item.atualizado_em,
@@ -363,7 +363,7 @@ assert.doesNotThrow(
         itens: [item, itemEnviado],
         tickets: [ticketNovo, ticketAnterior],
       },
-      perfil("Rafael"),
+      perfil("Atendimento"),
       "enviar_pedido",
     ),
   "envio valido preserva fichas anteriores e cria a nova ficha",
@@ -383,7 +383,7 @@ assert.throws(
           ticketAnterior,
         ],
       },
-      perfil("Rafael"),
+      perfil("Atendimento"),
       "enviar_pedido",
     ),
   /ficha|itens enviados|corresponde/i,
@@ -398,7 +398,7 @@ assert.doesNotThrow(
         ...base,
         mesas: [{ ...mesa, status: "aguardando", contaSolicitada: true }],
       },
-      perfil("Rafael"),
+      perfil("Atendimento"),
       "solicitar_fechamento",
     ),
   "garcom pode solicitar fechamento de mesa com consumo enviado",
@@ -412,7 +412,7 @@ assert.throws(
         mesas: [{ ...mesa, status: "aguardando", contaSolicitada: true }],
         itens: [rascunho],
       },
-      perfil("Rafael"),
+      perfil("Atendimento"),
       "solicitar_fechamento",
     ),
   /fechamento inválida/i,

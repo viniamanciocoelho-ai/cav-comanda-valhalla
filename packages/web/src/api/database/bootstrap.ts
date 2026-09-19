@@ -32,7 +32,7 @@ async function criarEstrutura() {
     )`,
     `CREATE TABLE IF NOT EXISTS mesas (
       organizacao_id TEXT NOT NULL, mesa_id INTEGER NOT NULL, status TEXT NOT NULL,
-      ativa INTEGER NOT NULL, demonstracao INTEGER, pessoas_fixas INTEGER NOT NULL,
+      ativa INTEGER NOT NULL, pessoas_fixas INTEGER NOT NULL,
       total_fixo_centavos INTEGER NOT NULL, aberta_em TEXT, garcom_id TEXT,
       conta_solicitada INTEGER NOT NULL, servico_incluso INTEGER NOT NULL,
       PRIMARY KEY (organizacao_id, mesa_id)

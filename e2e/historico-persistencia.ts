@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRouterClient } from "../packages/web/node_modules/@orpc/server/dist/index.mjs";
-import { prepararBancoTeste } from "./test-database";
+import { PIN_GERENCIA_TESTE, prepararBancoTeste } from "./test-database";
 
 await prepararBancoTeste("historico-persistencia");
 const [{ router }, { db }, { fechamentos }] = await Promise.all([
@@ -12,7 +12,10 @@ const [{ router }, { db }, { fechamentos }] = await Promise.all([
 const publico = createRouterClient(router, {
   context: { headers: new Headers({ "x-real-ip": "203.0.113.20" }) },
 });
-const sessao = await publico.auth.login({ organizacao: "valhalla", pin: "1111" });
+const sessao = await publico.auth.login({
+  organizacao: "valhalla",
+  pin: PIN_GERENCIA_TESTE,
+});
 const cliente = createRouterClient(router, {
   context: {
     headers: new Headers({ authorization: `Bearer ${sessao.token}` }),

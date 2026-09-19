@@ -1,9 +1,6 @@
 // Tipos do dominio operacional compartilhados entre frontend e API.
 // Cada registro carrega identificadores estaveis e autoria para persistencia auditavel.
 
-/** Identificador da organizacao. Fixo na demonstracao; vira chave de isolamento no banco. */
-export const ORGANIZACAO_ID = "valhalla";
-
 export type Destino = "cozinha" | "bar";
 
 /** Estados de um item da comanda. */
@@ -28,11 +25,12 @@ export interface Funcionario {
   funcionario_id: string;
   funcionario_nome: string;
   funcionario_perfil: Perfil;
-  /** Rotulo exibido no seletor de perfil. */
+  /** Rotulo exibido na sessao atual. */
   rotulo: string;
   /** Descricao curta do que o perfil enxerga. */
   resumo: string;
   turno?: string;
+  ativo?: boolean;
 }
 
 export interface Pessoa {
@@ -68,13 +66,10 @@ export interface Mesa {
   organizacao_id: string;
   mesa_id: number;
   status: MesaStatus;
-  /** Mesa com comanda real nesta demonstracao (02, 06, 08 e as abertas pelo garcom). */
   ativa: boolean;
-  /** Mesa 08: roteiro principal da reuniao. */
-  demonstracao?: boolean;
-  /** Numero de pessoas das mesas de apoio, que nao tem comanda detalhada. */
+  /** Número de pessoas registradas quando a mesa está ativa. */
   pessoasFixas: number;
-  /** Total parcial fixo das mesas de apoio. */
+  /** Total parcial persistido para compatibilidade de leitura. */
   totalFixo: number;
   abertaEm: string | null;
   garcom_id: string | null;
@@ -101,6 +96,10 @@ export interface MenuItem {
   price: number;
   destino_producao: Destino;
   categoria: MenuCategoria;
+}
+
+export interface ProdutoConfiguracao extends MenuItem {
+  ativo: boolean;
 }
 
 export interface TicketLinha {
@@ -183,7 +182,7 @@ export interface EncerramentoSemConsumo {
   aberta_em: string | null;
   encerrada_em: string;
   duracao_segundos: number;
-  /** Preenchido quando o encerramento foi desfeito na janela de 10 s da demonstracao. */
+  /** Preenchido quando o encerramento foi desfeito dentro da janela permitida. */
   desfeito_em: string | null;
 }
 

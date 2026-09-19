@@ -1,7 +1,6 @@
 // Testes da regra de encerramento de mesa sem consumo. Rodar com: bun e2e/sem-consumo.ts
 //
-// Cobre o que a interface nao consegue provar sozinha na demonstracao (existe um unico
-// garcom na lista de perfis): a matriz de permissao por perfil e por dono da mesa, e os
+// Cobre o que a interface nao consegue provar sozinha: a matriz de permissao por perfil e por dono da mesa, e os
 // bloqueios de elegibilidade (item enviado, ficha de producao, fechamento pedido,
 // consumo lancado). Tambem confere a chave de idempotencia da abertura.
 
@@ -10,7 +9,7 @@ import {
   avaliarSemConsumoDe,
   type Dados,
 } from "../packages/web/src/web/components/comanda-provider";
-import { funcionarios } from "../packages/web/src/web/lib/perfis";
+import { funcionarios } from "./fixtures-funcionarios";
 import type { Funcionario, Mesa, OrderItem, Pessoa, Ticket } from "../packages/web/src/web/lib/types";
 
 const ORG = "org-valhalla";
@@ -51,7 +50,7 @@ function mesa(extra: Partial<Mesa> = {}): Mesa {
     pessoasFixas: 0,
     totalFixo: 0,
     abertaEm: new Date(Date.now() - 12 * 60_000).toISOString(),
-    garcom_id: "f-rafael",
+    garcom_id: "f-atendimento",
     contaSolicitada: false,
     servicoIncluso: true,
     ...extra,
@@ -72,8 +71,8 @@ function item(extra: Partial<OrderItem> = {}): OrderItem {
     destino_producao: "bar",
     status: "novo",
     observacao: "",
-    funcionario_id: "f-rafael",
-    funcionario_nome: "Rafael",
+    funcionario_id: "f-atendimento",
+    funcionario_nome: "Atendimento",
     criado_em: new Date().toISOString(),
     atualizado_em: new Date().toISOString(),
     ...extra,

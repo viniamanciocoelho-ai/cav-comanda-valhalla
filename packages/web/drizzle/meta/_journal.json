@@ -15,6 +15,13 @@
       "when": 1789760849127,
       "tag": "0001_cancelamento-anterior",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789782100840,
+      "tag": "0002_remover-campo-mesa",
+      "breakpoints": true
     }
   ]
 }

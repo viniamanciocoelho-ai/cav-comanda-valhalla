@@ -16,18 +16,11 @@ import {
 } from "../database/schema";
 import { garantirBanco } from "../database/bootstrap";
 import {
-  cardapio as cardapioInicial,
   COMPARTILHADO,
-  fechamentosIniciais,
-  itensIniciais,
-  mesasIniciais,
-  pessoasIniciais,
-  ticketsIniciais,
   TAXA_SERVICO,
   compartilhadoId,
   ehCompartilhado,
-} from "../../web/lib/demo-data";
-import { funcionarios as funcionariosIniciais } from "../../web/lib/perfis";
+} from "../../web/lib/operacao";
 import { ratear } from "../../web/lib/rateio";
 import type {
   EncerramentoSemConsumo,
@@ -37,9 +30,18 @@ import type {
   Mesa,
   OrderItem,
   Pessoa,
+  ProdutoConfiguracao,
   Ticket,
 } from "../../web/lib/types";
-import { conferirPin, gerarHashPin, novoToken, sha256 } from "./security";
+import { cardapioInicial } from "./cardapio-inicial";
+import { criarMesaVazia } from "./mesa-inicial";
+import {
+  conferirPin,
+  gerarHashPin,
+  novoToken,
+  pinOperacionalValido,
+  sha256,
+} from "./security";
 
 export interface EstadoPersistido {
   mesas: Mesa[];
@@ -58,25 +60,17 @@ export interface SessaoAutenticada {
 }
 
 const ORGANIZACAO_PADRAO = "valhalla";
-const HASH_PIN_FICTICIO = gerarHashPin("0000");
+const HASH_PIN_NEUTRO = gerarHashPin("0000");
 
-function configuracaoBootstrap() {
-  const producao = process.env.NODE_ENV === "production";
+export function configuracaoBootstrap() {
   const codigo = process.env.CAV_ORGANIZACAO_CODIGO?.trim().toLowerCase() || "valhalla";
-  const pins: Record<Funcionario["funcionario_perfil"], string | undefined> = {
-    gerencia: process.env.CAV_BOOTSTRAP_PIN_GERENCIA || (producao ? undefined : "1111"),
-    garcom: process.env.CAV_BOOTSTRAP_PIN_GARCOM || (producao ? undefined : "2222"),
-    producao: process.env.CAV_BOOTSTRAP_PIN_PRODUCAO || (producao ? undefined : "3333"),
-    caixa: process.env.CAV_BOOTSTRAP_PIN_CAIXA || (producao ? undefined : "4444"),
-  };
-  if (Object.values(pins).some((pin) => !pin || !/^\d{4}$/.test(pin))) {
-    throw new Error("Configure os quatro CAV_BOOTSTRAP_PIN_* com PINs numéricos de 4 dígitos.");
+  const pinGerencia = process.env.CAV_BOOTSTRAP_PIN_GERENCIA?.trim() ?? "";
+  if (!pinOperacionalValido(pinGerencia)) {
+    throw new Error(
+      "Configure CAV_BOOTSTRAP_PIN_GERENCIA com um PIN não sequencial de 4 dígitos.",
+    );
   }
-  return {
-    codigo,
-    demo: process.env.CAV_DEMO_MODE !== "false" && !producao,
-    pins: pins as Record<Funcionario["funcionario_perfil"], string>,
-  };
+  return { codigo, pinGerencia };
 }
 
 function agora() {
@@ -239,49 +233,28 @@ export async function garantirOrganizacaoPadrao() {
       versao: 1,
       atualizadoEm: instante,
     });
-    await tx.insert(funcionariosTabela).values(
-      await Promise.all(
-        funcionariosIniciais.map(async (funcionario) => ({
-          organizacaoId: ORGANIZACAO_PADRAO,
-          funcionarioId: funcionario.funcionario_id,
-          nome: funcionario.funcionario_nome,
-          perfil: funcionario.funcionario_perfil,
-          pinHash: await gerarHashPin(bootstrap.pins[funcionario.funcionario_perfil]),
-          ativo: true,
-          criadoEm: instante,
-          atualizadoEm: instante,
-        })),
-      ),
+    await tx.insert(funcionariosTabela).values({
+      organizacaoId: ORGANIZACAO_PADRAO,
+      funcionarioId: "f-gerencia",
+      nome: "Gerência",
+      perfil: "gerencia",
+      pinHash: await gerarHashPin(bootstrap.pinGerencia),
+      ativo: true,
+      criadoEm: instante,
+      atualizadoEm: instante,
+    });
+    const mesasVazias = Array.from({ length: 15 }, (_, indice) =>
+      criarMesaVazia(ORGANIZACAO_PADRAO, indice + 1),
     );
-    const mesasVazias = Array.from({ length: 15 }, (_, indice) => ({
-      ...mesasIniciais[0],
-      mesa_id: indice + 1,
-      organizacao_id: ORGANIZACAO_PADRAO,
-    }));
     await gravarEstadoTx(
       tx,
       ORGANIZACAO_PADRAO,
       {
-        mesas: bootstrap.demo
-          ? [
-              ...mesasIniciais,
-              ...mesasVazias.filter(
-                (mesaVazia) =>
-                  !mesasIniciais.some((mesaInicial) => mesaInicial.mesa_id === mesaVazia.mesa_id),
-              ),
-            ]
-          : mesasVazias,
-        pessoas: bootstrap.demo ? pessoasIniciais : [],
-        itens: bootstrap.demo
-          ? itensIniciais.map((item) => ({ ...item, organizacao_id: ORGANIZACAO_PADRAO }))
-          : [],
-        tickets: bootstrap.demo
-          ? ticketsIniciais.map((ticket) => ({
-              ...ticket,
-              organizacao_id: ORGANIZACAO_PADRAO,
-            }))
-          : [],
-        fechamentos: fechamentosIniciais,
+        mesas: mesasVazias,
+        pessoas: [],
+        itens: [],
+        tickets: [],
+        fechamentos: [],
         encerramentos: [],
         anteriores: {},
       },
@@ -318,7 +291,6 @@ async function gravarEstadoTx(
         mesaId: mesa.mesa_id,
         status: mesa.status,
         ativa: mesa.ativa,
-        demonstracao: mesa.demonstracao,
         pessoasFixas: mesa.pessoasFixas,
         totalFixoCentavos: centavos(mesa.totalFixo),
         abertaEm: mesa.abertaEm,
@@ -484,7 +456,7 @@ export async function autenticar(codigo: string, pin: string): Promise<SessaoAut
     .where(eq(organizacoes.codigo, codigo.trim().toLowerCase()))
     .limit(1);
   if (!organizacao) {
-    await conferirPin(pin, await HASH_PIN_FICTICIO);
+    await conferirPin(pin, await HASH_PIN_NEUTRO);
     return null;
   }
   const candidatos = await db
@@ -516,6 +488,7 @@ export async function autenticar(codigo: string, pin: string): Promise<SessaoAut
         funcionario_perfil: candidato.perfil,
         rotulo: candidato.nome,
         resumo: "",
+        ativo: true,
       },
     };
   }
@@ -557,6 +530,7 @@ export async function obterSessao(cabecalho: string | null): Promise<SessaoAuten
       funcionario_perfil: funcionario.perfil,
       rotulo: funcionario.nome,
       resumo: "",
+      ativo: true,
     },
   };
 }
@@ -604,7 +578,6 @@ export async function lerEstado(organizacaoId: string) {
       mesa_id: mesa.mesaId,
       status: mesa.status,
       ativa: mesa.ativa,
-      demonstracao: mesa.demonstracao ?? undefined,
       pessoasFixas: mesa.pessoasFixas,
       totalFixo: reais(mesa.totalFixoCentavos),
       abertaEm: mesa.abertaEm,
@@ -692,7 +665,6 @@ export async function lerEstado(organizacaoId: string) {
 
   return {
     organizacaoId,
-    modoDemo: configuracaoBootstrap().demo,
     versao: versao?.versao ?? 0,
     estado,
     cardapio: linhasCardapio
@@ -704,6 +676,14 @@ export async function lerEstado(organizacaoId: string) {
         destino_producao: produto.destinoProducao,
         categoria: produto.categoria,
       })),
+    produtos: linhasCardapio.map((produto) => ({
+      produto_id: produto.produtoId,
+      name: produto.nome,
+      price: reais(produto.precoCentavos),
+      destino_producao: produto.destinoProducao,
+      categoria: produto.categoria,
+      ativo: produto.ativo,
+    })),
     configuracao: {
       quantidadeMesas: configuracao?.quantidadeMesas ?? 15,
       larguraRecibo: configuracao?.larguraRecibo ?? 80,
@@ -714,6 +694,7 @@ export async function lerEstado(organizacaoId: string) {
       funcionario_perfil: funcionario.perfil,
       rotulo: funcionario.nome,
       resumo: "",
+      ativo: funcionario.ativo,
     })),
   };
 }
@@ -741,7 +722,6 @@ export function validarTransicao(
     fechar_conta: ["mesas", "pessoas", "itens", "tickets", "fechamentos", "anteriores"],
     encerrar_sem_consumo: ["mesas", "pessoas", "itens", "encerramentos"],
     desfazer_sem_consumo: ["mesas", "pessoas", "itens", "encerramentos"],
-    reiniciar: ["mesas", "pessoas", "itens", "tickets", "fechamentos", "encerramentos", "anteriores"],
   };
   const permitidas = new Set(colecoesPermitidas[acao] ?? []);
   for (const chave of Object.keys(anterior) as (keyof EstadoPersistido)[]) {
@@ -1552,9 +1532,6 @@ export async function salvarEstado(
   acao: string,
   entidadeId?: string,
 ) {
-  if (acao === "reiniciar" && !configuracaoBootstrap().demo) {
-    throw new Error("Reiniciar demonstração está bloqueado fora do modo demo.");
-  }
   const leituraAnterior = await lerEstado(organizacaoId);
   const anterior = leituraAnterior.estado;
   const cardapio = new Map(
@@ -1609,7 +1586,7 @@ export async function salvarEstado(
       estado,
       undefined,
       anterior,
-      acao === "reiniciar",
+      false,
     );
     await tx.insert(auditoria).values({
       auditoriaId: crypto.randomUUID(),
@@ -1677,7 +1654,6 @@ export async function salvarConfiguracao(
         mesaId,
         status: "livre" as const,
         ativa: false,
-        demonstracao: false,
         pessoasFixas: 0,
         totalFixoCentavos: 0,
         abertaEm: null,
@@ -1690,7 +1666,10 @@ export async function salvarConfiguracao(
   });
 }
 
-export async function salvarProduto(organizacaoId: string, produto: MenuItem) {
+export async function salvarProduto(
+  organizacaoId: string,
+  produto: ProdutoConfiguracao,
+) {
   await db
     .insert(cardapioTabela)
     .values({
@@ -1700,7 +1679,7 @@ export async function salvarProduto(organizacaoId: string, produto: MenuItem) {
       precoCentavos: centavos(produto.price),
       destinoProducao: produto.destino_producao,
       categoria: produto.categoria,
-      ativo: true,
+      ativo: produto.ativo,
     })
     .onConflictDoUpdate({
       target: [cardapioTabela.organizacaoId, cardapioTabela.produtoId],
@@ -1709,35 +1688,60 @@ export async function salvarProduto(organizacaoId: string, produto: MenuItem) {
         precoCentavos: centavos(produto.price),
         destinoProducao: produto.destino_producao,
         categoria: produto.categoria,
-        ativo: true,
+        ativo: produto.ativo,
       },
     });
 }
 
 export async function salvarFuncionario(
   organizacaoId: string,
-  entrada: { funcionarioId: string; nome: string; perfil: Funcionario["funcionario_perfil"]; pin: string },
+  funcionarioAtualId: string,
+  entrada: {
+    funcionarioId: string;
+    nome: string;
+    perfil: Funcionario["funcionario_perfil"];
+    pin?: string;
+    ativo: boolean;
+  },
 ) {
   const instante = agora();
-  const pinHash = await gerarHashPin(entrada.pin);
+  if (!entrada.ativo && entrada.funcionarioId === funcionarioAtualId) {
+    throw new Error("O funcionário da sessão atual não pode ser desativado.");
+  }
+  if (entrada.pin !== undefined && !pinOperacionalValido(entrada.pin)) {
+    throw new Error("Use um PIN não sequencial de 4 dígitos.");
+  }
   await db.transaction(async (tx) => {
-    const existentes = await tx
+    const [atual] = await tx
       .select()
       .from(funcionariosTabela)
       .where(
         and(
           eq(funcionariosTabela.organizacaoId, organizacaoId),
-          eq(funcionariosTabela.ativo, true),
+          eq(funcionariosTabela.funcionarioId, entrada.funcionarioId),
         ),
-      );
-    for (const existente of existentes) {
-      if (
-        existente.funcionarioId !== entrada.funcionarioId &&
-        (await conferirPin(entrada.pin, existente.pinHash))
-      ) {
-        throw new Error("Este PIN já pertence a outro funcionário.");
+      )
+      .limit(1);
+    if (!atual && !entrada.pin) {
+      throw new Error("Informe um PIN para o novo funcionário.");
+    }
+    const existentes = await tx
+      .select()
+      .from(funcionariosTabela)
+      .where(eq(funcionariosTabela.organizacaoId, organizacaoId));
+    if (entrada.pin) {
+      for (const existente of existentes) {
+        if (
+          existente.funcionarioId !== entrada.funcionarioId &&
+          (await conferirPin(entrada.pin, existente.pinHash))
+        ) {
+          throw new Error("Este PIN já pertence a outro funcionário.");
+        }
       }
     }
+    const pinHash = entrada.pin
+      ? await gerarHashPin(entrada.pin)
+      : atual!.pinHash;
     await tx
       .insert(funcionariosTabela)
       .values({
@@ -1746,7 +1750,7 @@ export async function salvarFuncionario(
         nome: entrada.nome,
         perfil: entrada.perfil,
         pinHash,
-        ativo: true,
+        ativo: entrada.ativo,
         criadoEm: instante,
         atualizadoEm: instante,
       })
@@ -1756,9 +1760,70 @@ export async function salvarFuncionario(
           nome: entrada.nome,
           perfil: entrada.perfil,
           pinHash,
-          ativo: true,
+          ativo: entrada.ativo,
           atualizadoEm: instante,
         },
       });
+    if (!entrada.ativo) {
+      await tx
+        .delete(sessoes)
+        .where(
+          and(
+            eq(sessoes.organizacaoId, organizacaoId),
+            eq(sessoes.funcionarioId, entrada.funcionarioId),
+          ),
+        );
+    }
+  });
+}
+
+export async function alterarPinProprio(
+  organizacaoId: string,
+  funcionarioId: string,
+  pinAtual: string,
+  pinNovo: string,
+) {
+  if (!pinOperacionalValido(pinNovo)) {
+    throw new Error("Use um PIN novo não sequencial de 4 dígitos.");
+  }
+  await db.transaction(async (tx) => {
+    const [funcionario] = await tx
+      .select()
+      .from(funcionariosTabela)
+      .where(
+        and(
+          eq(funcionariosTabela.organizacaoId, organizacaoId),
+          eq(funcionariosTabela.funcionarioId, funcionarioId),
+          eq(funcionariosTabela.ativo, true),
+        ),
+      )
+      .limit(1);
+    if (!funcionario || !(await conferirPin(pinAtual, funcionario.pinHash))) {
+      throw new Error("PIN atual incorreto.");
+    }
+    const existentes = await tx
+      .select()
+      .from(funcionariosTabela)
+      .where(eq(funcionariosTabela.organizacaoId, organizacaoId));
+    for (const existente of existentes) {
+      if (
+        existente.funcionarioId !== funcionarioId &&
+        (await conferirPin(pinNovo, existente.pinHash))
+      ) {
+        throw new Error("Este PIN já pertence a outro funcionário.");
+      }
+    }
+    await tx
+      .update(funcionariosTabela)
+      .set({
+        pinHash: await gerarHashPin(pinNovo),
+        atualizadoEm: agora(),
+      })
+      .where(
+        and(
+          eq(funcionariosTabela.organizacaoId, organizacaoId),
+          eq(funcionariosTabela.funcionarioId, funcionarioId),
+        ),
+      );
   });
 }

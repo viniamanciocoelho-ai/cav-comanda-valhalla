@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRouterClient } from "../packages/web/node_modules/@orpc/server/dist/index.mjs";
-import { prepararBancoTeste } from "./test-database";
+import { PIN_GERENCIA_TESTE, prepararBancoTeste } from "./test-database";
 
 await prepararBancoTeste("tenant-isolation");
 const [{ db }, schema, { gerarHashPin }, { router }] = await Promise.all([
@@ -14,7 +14,10 @@ const { cardapio, funcionarios, mesas, organizacoes, versoesEstado } = schema;
 const publico = createRouterClient(router, {
   context: { headers: new Headers() },
 });
-const valhalla = await publico.auth.login({ organizacao: "valhalla", pin: "1111" });
+const valhalla = await publico.auth.login({
+  organizacao: "valhalla",
+  pin: PIN_GERENCIA_TESTE,
+});
 const instante = new Date().toISOString();
 
 await db.transaction(async (tx) => {
@@ -47,7 +50,6 @@ await db.transaction(async (tx) => {
     mesaId: 1,
     status: "livre",
     ativa: false,
-    demonstracao: false,
     pessoasFixas: 0,
     totalFixoCentavos: 0,
     abertaEm: null,

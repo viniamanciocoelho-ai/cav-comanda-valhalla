@@ -2,6 +2,7 @@ import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import { base } from "../__core/app";
 import {
+  alterarPinProprio,
   autenticar,
   garantirOrganizacaoPadrao,
   lerEstado,
@@ -13,7 +14,7 @@ import {
   salvarProduto,
   type EstadoPersistido,
 } from "../lib/comanda-store";
-import type { Funcionario, MenuItem, Perfil } from "../../web/lib/types";
+import type { Funcionario, Perfil, ProdutoConfiguracao } from "../../web/lib/types";
 import { dinheiroSchema, estadoPersistidoSchema } from "../lib/comanda-schema";
 
 const perfis = ["gerencia", "garcom", "producao", "caixa"] as const;
@@ -30,7 +31,6 @@ const acoes = [
   "fechar_conta",
   "encerrar_sem_consumo",
   "desfazer_sem_consumo",
-  "reiniciar",
 ] as const;
 
 const permissoes: Record<(typeof acoes)[number], Perfil[]> = {
@@ -46,7 +46,6 @@ const permissoes: Record<(typeof acoes)[number], Perfil[]> = {
   fechar_conta: ["gerencia", "caixa"],
   encerrar_sem_consumo: ["gerencia", "garcom"],
   desfazer_sem_consumo: ["gerencia", "garcom"],
-  reiniciar: ["gerencia"],
 };
 
 const tentativasLogin = new Map<
@@ -235,13 +234,17 @@ export const produtoSalvar = autenticado
         "Complementos",
         "Energético",
       ]),
+      ativo: z.boolean(),
     }),
   )
   .handler(async ({ input, context }) => {
     if (context.sessao.funcionario.funcionario_perfil !== "gerencia") {
       throw new ORPCError("FORBIDDEN");
     }
-    await salvarProduto(context.sessao.organizacaoId, input as MenuItem);
+    await salvarProduto(
+      context.sessao.organizacaoId,
+      input as ProdutoConfiguracao,
+    );
     return { ok: true };
   });
 
@@ -251,17 +254,39 @@ export const funcionarioSalvar = autenticado
       funcionarioId: z.string().trim().min(1).max(80),
       nome: z.string().trim().min(1).max(120),
       perfil: z.enum(perfis),
-      pin: z.string().regex(/^\d{4}$/),
+      pin: z.string().regex(/^\d{4}$/).optional(),
+      ativo: z.boolean(),
     }),
   )
   .handler(async ({ input, context }) => {
     if (context.sessao.funcionario.funcionario_perfil !== "gerencia") {
       throw new ORPCError("FORBIDDEN");
     }
-    await salvarFuncionario(context.sessao.organizacaoId, {
-      ...input,
-      perfil: input.perfil as Funcionario["funcionario_perfil"],
-    });
+    await salvarFuncionario(
+      context.sessao.organizacaoId,
+      context.sessao.funcionario.funcionario_id,
+      {
+        ...input,
+        perfil: input.perfil as Funcionario["funcionario_perfil"],
+      },
+    );
+    return { ok: true };
+  });
+
+export const pinAlterar = autenticado
+  .input(
+    z.object({
+      pinAtual: z.string().regex(/^\d{4}$/),
+      pinNovo: z.string().regex(/^\d{4}$/),
+    }),
+  )
+  .handler(async ({ input, context }) => {
+    await alterarPinProprio(
+      context.sessao.organizacaoId,
+      context.sessao.funcionario.funcionario_id,
+      input.pinAtual,
+      input.pinNovo,
+    );
     return { ok: true };
   });
 
@@ -271,4 +296,5 @@ export const comanda = {
   configurar,
   produtoSalvar,
   funcionarioSalvar,
+  pinAlterar,
 };

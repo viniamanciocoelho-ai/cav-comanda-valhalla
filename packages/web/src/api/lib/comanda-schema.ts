@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { compartilhadoId } from "../../web/lib/demo-data";
+import { compartilhadoId } from "../../web/lib/operacao";
 
 const perfilSchema = z.enum(["gerencia", "garcom", "producao", "caixa"]);
 const itemStatusSchema = z.enum([
@@ -48,7 +48,6 @@ const mesaSchema = z
     mesa_id: z.number().int().min(1).max(200),
     status: z.enum(["livre", "ocupada", "aguardando"]),
     ativa: z.boolean(),
-    demonstracao: z.boolean().optional(),
     pessoasFixas: z.number().int().min(0).max(200),
     totalFixo: dinheiroSchema(1_000_000),
     abertaEm: z.string().nullable(),

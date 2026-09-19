@@ -5,7 +5,8 @@ import {
   type Dados,
 } from "../packages/web/src/web/components/comanda-provider";
 import { hora, minutosDesde } from "../packages/web/src/web/lib/format";
-import { funcionarios, podeAcessar } from "../packages/web/src/web/lib/perfis";
+import { podeAcessar } from "../packages/web/src/web/lib/perfis";
+import { funcionarios } from "./fixtures-funcionarios";
 import type { Mesa } from "../packages/web/src/web/lib/types";
 
 function mesa(extra: Partial<Mesa> = {}): Mesa {
@@ -17,15 +18,17 @@ function mesa(extra: Partial<Mesa> = {}): Mesa {
     pessoasFixas: 0,
     totalFixo: 0,
     abertaEm: new Date(Date.now() - 60_000).toISOString(),
-    garcom_id: "f-rafael",
+    garcom_id: "f-atendimento",
     contaSolicitada: false,
     servicoIncluso: true,
     ...extra,
   };
 }
 
-const rafael = funcionarios.find((funcionario) => funcionario.funcionario_id === "f-rafael");
-assert.ok(rafael);
+const atendente = funcionarios.find(
+  (funcionario) => funcionario.funcionario_perfil === "garcom",
+);
+assert.ok(atendente);
 
 const dadosBase: Dados = {
   mesas: [mesa()],
@@ -47,7 +50,7 @@ assert.equal(
   avaliarSemConsumoDe(
     { ...dadosBase, mesas: [mesa({ ativa: true, status: "livre" })] },
     7,
-    rafael,
+    atendente,
   ).elegivel,
   false,
 );
@@ -55,7 +58,7 @@ assert.equal(
   avaliarSemConsumoDe(
     { ...dadosBase, mesas: [mesa({ ativa: true, abertaEm: null })] },
     7,
-    rafael,
+    atendente,
   ).elegivel,
   false,
 );
