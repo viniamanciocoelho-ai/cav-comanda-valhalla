@@ -369,7 +369,7 @@ function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
 }
 
 export function ComandaProvider({ children }: { children: React.ReactNode }) {
-  const { sessao } = useSessao();
+  const { sessao, sair } = useSessao();
   const organizacaoId = sessao!.organizacaoId;
   const [dados, setDados] = useState<Dados>(() => estadoInicial());
   const espelho = useRef<Dados>(dados);

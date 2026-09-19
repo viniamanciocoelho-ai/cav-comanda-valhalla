@@ -147,7 +147,7 @@ export function serializarEscPos(texto: string): Uint8Array {
   const semAcentos = texto
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replaceAll("×", "x");
+    .replace(/×/g, "x");
   const corpo = new TextEncoder().encode(`${semAcentos}\n`);
   const prefixo = new Uint8Array([0x1b, 0x40, 0x1b, 0x61, 0x00]);
   const alimentacao = new Uint8Array([0x1b, 0x64, 0x03]);

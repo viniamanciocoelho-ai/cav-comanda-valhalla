@@ -183,7 +183,7 @@ const colecoes: Colecao[] = [
   "encerramentos",
 ];
 
-function idDoRegistro(registro: Record<string, unknown>): string {
+function idDoRegistro(registro: object): string {
   const id = Object.entries(registro).find(
     ([chave]) => chave.endsWith("_id") && chave !== "organizacao_id",
   );
