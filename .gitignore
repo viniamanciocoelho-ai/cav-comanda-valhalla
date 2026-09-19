@@ -70,6 +70,7 @@ __pycache__/
 e2e/resultado*.json
 e2e/shots/
 packages/desktop/web-dist/
+backups/
 
 # generated native folders
 ios

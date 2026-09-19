@@ -14,7 +14,9 @@
     "db:generate": "bun --env-file=../../.env drizzle-kit generate",
     "db:migrate": "bun --env-file=../../.env drizzle-kit migrate",
     "db:push": "bun --env-file=../../.env drizzle-kit push",
-    "limpar:operacao": "bun --env-file=../../.env scripts/limpar-operacao.ts"
+    "limpar:operacao": "bun --env-file=../../.env scripts/limpar-operacao.ts",
+    "backup": "bun --env-file=../../.env scripts/backup.ts",
+    "restore": "bun --env-file=../../.env scripts/restore.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
