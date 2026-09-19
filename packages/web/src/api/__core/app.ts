@@ -27,12 +27,30 @@ export const base = os.$context<RpcContext>();
 
 /** Assembles the HTTP mount: CORS → /api/health → oRPC procedures at /api/rpc/*. */
 export function createApp(router: Router<Record<never, never>, RpcContext>) {
+  const origensPermitidas = new Set(
+    (process.env.CAV_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((origem) => origem.trim())
+      .filter(Boolean),
+  );
+  const desenvolvimento = process.env.NODE_ENV !== "production";
   const app = new Hono().use(
     cors({
-      origin: (origin) => origin ?? "*",
-      credentials: true,
-      // Required so the browser can read the bearer token header set by Better Auth.
-      exposeHeaders: ["set-auth-token"],
+      origin: (origin, context) => {
+        if (!origin) return null;
+        if (origin === new URL(context.req.url).origin) return origin;
+        if (origensPermitidas.has(origin)) return origin;
+        if (
+          desenvolvimento &&
+          /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+        ) {
+          return origin;
+        }
+        return null;
+      },
+      allowHeaders: ["Authorization", "Content-Type"],
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      maxAge: 600,
     }),
   );
 

@@ -1,7 +1,5 @@
 import type { LinhaDivisao, OrderItem, Pessoa } from "./types";
-import { ehCompartilhado } from "./demo-data";
 import { money } from "./format";
-import { paraCentavos, paraReais, ratear } from "./rateio";
 
 export function montarRecibo(
   mesaId: number,
@@ -21,15 +19,7 @@ export function montarRecibo(
     for (const item of itens.filter((registro) => registro.pessoa_id === pessoa.pessoa_id)) {
       linhas.push(`${item.quantidade}x ${item.name}  ${money(item.price * item.quantidade)}`);
     }
-    const compartilhados = itens.filter((registro) => ehCompartilhado(registro.pessoa_id));
-    for (const item of compartilhados) {
-      const partes = ratear(
-        paraCentavos(item.price * item.quantidade),
-        pessoas.map(() => 1),
-      );
-      const indice = pessoas.findIndex((registro) => registro.pessoa_id === pessoa.pessoa_id);
-      linhas.push(`Rateio ${item.name}  ${money(paraReais(partes[indice] ?? 0))}`);
-    }
+    if (total?.rateio) linhas.push(`Rateio compartilhados  ${money(total.rateio)}`);
     if (total?.servico) linhas.push(`Servico  ${money(total.servico)}`);
     linhas.push(`TOTAL  ${money(total?.total ?? 0)}`);
   }

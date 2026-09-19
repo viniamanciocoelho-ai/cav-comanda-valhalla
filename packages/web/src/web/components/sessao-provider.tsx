@@ -49,8 +49,12 @@ export function SessaoProvider({ children }: { children: React.ReactNode }) {
   }
 
   function sair() {
+    const revogacao = window.localStorage.getItem(SESSION_TOKEN_KEY)
+      ? client.auth.logout()
+      : Promise.resolve();
     window.localStorage.removeItem(SESSION_TOKEN_KEY);
     setSessao(null);
+    void revogacao.catch(() => undefined);
   }
 
   return (

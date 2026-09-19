@@ -56,7 +56,7 @@ const divisao: LinhaDivisao[] = [
 const recibo = montarRecibo(1, pessoas, itens, divisao, 58);
 assert.match(recibo, /GUILHERME/);
 assert.match(recibo, /Batata cheddar/);
-assert.match(recibo, /Rateio Água/);
+assert.match(recibo, /Rateio compartilhados/);
 assert.match(recibo, /TOTAL/);
 assert.match(recibo, /sem valor fiscal/);
 assert.doesNotMatch(recibo, /NFC-e/i);

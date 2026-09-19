@@ -64,6 +64,7 @@ yarn-debug.*
 yarn-error.*
 
 # local test artifacts
+.tmp/
 __pycache__/
 *.pyc
 e2e/resultado*.json

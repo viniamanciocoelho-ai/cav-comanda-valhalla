@@ -6,6 +6,7 @@ import {
   garantirOrganizacaoPadrao,
   lerEstado,
   obterSessao,
+  revogarSessao,
   salvarConfiguracao,
   salvarEstado,
   salvarFuncionario,
@@ -13,6 +14,7 @@ import {
   type EstadoPersistido,
 } from "../lib/comanda-store";
 import type { Funcionario, MenuItem, Perfil } from "../../web/lib/types";
+import { dinheiroSchema, estadoPersistidoSchema } from "../lib/comanda-schema";
 
 const perfis = ["gerencia", "garcom", "producao", "caixa"] as const;
 const acoes = [
@@ -47,6 +49,51 @@ const permissoes: Record<(typeof acoes)[number], Perfil[]> = {
   reiniciar: ["gerencia"],
 };
 
+const tentativasLogin = new Map<
+  string,
+  { falhas: number; janelaIniciadaEm: number; bloqueadoAte: number; ultimoAcesso: number }
+>();
+const JANELA_LOGIN_MS = 5 * 60_000;
+const BLOQUEIO_LOGIN_MS = 15 * 60_000;
+const LIMITE_LOGIN_ORIGEM = 8;
+const LIMITE_LOGIN_ORGANIZACAO = 80;
+
+function origemLogin(headers: Headers): string {
+  return (
+    headers.get("cf-connecting-ip") ??
+    headers.get("x-real-ip") ??
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    "origem-desconhecida"
+  );
+}
+
+function reservarTentativa(chave: string, limite: number): boolean {
+  const instante = Date.now();
+  let anterior = tentativasLogin.get(chave);
+  if (!anterior && tentativasLogin.size >= 5_000) {
+    for (const [id, registro] of tentativasLogin) {
+      if (
+        registro.bloqueadoAte <= instante &&
+        instante - registro.ultimoAcesso > JANELA_LOGIN_MS
+      ) {
+        tentativasLogin.delete(id);
+      }
+    }
+    anterior = tentativasLogin.get(chave);
+    if (!anterior && tentativasLogin.size >= 5_000) return false;
+  }
+  if (anterior?.bloqueadoAte && anterior.bloqueadoAte > instante) return false;
+
+  const atual =
+    !anterior || instante - anterior.janelaIniciadaEm > JANELA_LOGIN_MS
+      ? { falhas: 0, janelaIniciadaEm: instante, bloqueadoAte: 0, ultimoAcesso: instante }
+      : { ...anterior, ultimoAcesso: instante };
+  atual.falhas += 1;
+  if (atual.falhas >= limite) atual.bloqueadoAte = instante + BLOQUEIO_LOGIN_MS;
+  tentativasLogin.set(chave, atual);
+  return true;
+}
+
 const autenticado = base.use(async ({ context, next }) => {
   await garantirOrganizacaoPadrao();
   const sessao = await obterSessao(context.headers.get("authorization"));
@@ -61,17 +108,34 @@ export const login = base
       pin: z.string().regex(/^\d{4}$/),
     }),
   )
-  .handler(async ({ input }) => {
+  .handler(async ({ input, context }) => {
+    const organizacao = input.organizacao.trim().toLowerCase();
+    const origem = origemLogin(context.headers);
+    const chaveOrigem = `origem:${origem}:${organizacao}`;
+    const chaveOrganizacao = `organizacao:${organizacao}`;
+    if (
+      !reservarTentativa(chaveOrigem, LIMITE_LOGIN_ORIGEM) ||
+      !reservarTentativa(chaveOrganizacao, LIMITE_LOGIN_ORGANIZACAO)
+    ) {
+      throw new ORPCError("UNAUTHORIZED", { message: "Organização ou PIN inválido." });
+    }
     const sessao = await autenticar(input.organizacao, input.pin);
     if (!sessao) {
       throw new ORPCError("UNAUTHORIZED", { message: "Organização ou PIN inválido." });
     }
+    tentativasLogin.delete(chaveOrigem);
+    tentativasLogin.delete(chaveOrganizacao);
     return {
       token: sessao.token,
       funcionario: sessao.funcionario,
       organizacaoId: sessao.organizacaoId,
     };
   });
+
+export const logout = autenticado.handler(async ({ context }) => {
+  await revogarSessao(context.headers.get("authorization"));
+  return { ok: true };
+});
 
 export const estado = autenticado.handler(async ({ context }) => ({
   ...(await lerEstado(context.sessao.organizacaoId)),
@@ -91,7 +155,11 @@ export const persistir = autenticado
     if (!permissoes[input.acao].includes(context.sessao.funcionario.funcionario_perfil)) {
       throw new ORPCError("FORBIDDEN");
     }
-    const estadoRecebido = input.estado as EstadoPersistido;
+    const estadoValidado = estadoPersistidoSchema.safeParse(input.estado);
+    if (!estadoValidado.success) {
+      throw new ORPCError("BAD_REQUEST", { message: "Estado inválido." });
+    }
+    const estadoRecebido = estadoValidado.data as EstadoPersistido;
     const colecoes = [
       estadoRecebido?.mesas,
       estadoRecebido?.itens,
@@ -129,6 +197,7 @@ export const persistir = autenticado
 export const configurar = autenticado
   .input(
     z.object({
+      versao: z.number().int().nonnegative(),
       quantidadeMesas: z.number().int().min(1).max(200),
       larguraRecibo: z.union([z.literal(58), z.literal(80)]),
     }),
@@ -137,12 +206,18 @@ export const configurar = autenticado
     if (context.sessao.funcionario.funcionario_perfil !== "gerencia") {
       throw new ORPCError("FORBIDDEN");
     }
-    await salvarConfiguracao(
+    const versao = await salvarConfiguracao(
       context.sessao.organizacaoId,
+      input.versao,
       input.quantidadeMesas,
       input.larguraRecibo,
     );
-    return { ok: true };
+    if (versao === null) {
+      throw new ORPCError("CONFLICT", {
+        message: "A configuração mudou em outro dispositivo. Recarregue o estado.",
+      });
+    }
+    return { ok: true, versao };
   });
 
 export const produtoSalvar = autenticado
@@ -150,7 +225,7 @@ export const produtoSalvar = autenticado
     z.object({
       produto_id: z.string().trim().min(1).max(80),
       name: z.string().trim().min(1).max(120),
-      price: z.number().nonnegative().max(100_000),
+      price: dinheiroSchema(100_000),
       destino_producao: z.enum(["cozinha", "bar"]),
       categoria: z.enum([
         "Bebidas alcoólicas",

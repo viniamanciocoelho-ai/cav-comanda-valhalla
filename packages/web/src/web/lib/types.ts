@@ -1,6 +1,5 @@
-// Tipos do dominio da demonstracao. Nenhum dado sai do navegador.
-// V2: cada registro carrega identificadores estaveis (nunca indice de array) e autoria,
-// para que a migracao para banco de dados seja direta. Ver ARCHITECTURE_HANDOFF.md.
+// Tipos do dominio operacional compartilhados entre frontend e API.
+// Cada registro carrega identificadores estaveis e autoria para persistencia auditavel.
 
 /** Identificador da organizacao. Fixo na demonstracao; vira chave de isolamento no banco. */
 export const ORGANIZACAO_ID = "valhalla";
@@ -22,7 +21,7 @@ export type TicketStatus = "enviado" | "preparando" | "pronto" | "entregue";
 /** Estados de uma mesa no salao. */
 export type MesaStatus = "livre" | "ocupada" | "aguardando";
 
-/** Perfis de acesso da demonstracao. Sem autenticacao real. */
+/** Perfis autenticados usados pelo RBAC do frontend e da API. */
 export type Perfil = "gerencia" | "garcom" | "producao" | "caixa";
 
 export interface Funcionario {

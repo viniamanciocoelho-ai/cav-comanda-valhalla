@@ -2,12 +2,10 @@
 // (rotasPermitidas) e e consultada em UM lugar so: aqui. Nenhuma tela repete a regra.
 //
 // Comportamento no bloqueio: a tela proibida NAO e montada (nada de piscar conteudo),
-// o perfil volta para a rota inicial dele, um aviso aparece e o estado da demonstracao
+// o perfil volta para a rota inicial dele, um aviso aparece e o estado operacional
 // continua intacto. Sem loop: a rota inicial de cada perfil esta sempre na lista dele.
 //
-// Limite conhecido: nao existe autenticacao nesta demonstracao. Recarregar a pagina
-// reinicia a sessao como Gerencia (ver README), portanto o bloqueio vale para a navegacao
-// dentro do aplicativo, nao para quem digita a URL e recarrega.
+// Esta guarda melhora a experiencia; a autorizacao efetiva tambem e aplicada na API.
 
 import { useEffect, useRef } from "react";
 import { Redirect, useLocation } from "wouter";

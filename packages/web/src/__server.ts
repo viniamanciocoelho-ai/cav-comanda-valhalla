@@ -1,4 +1,5 @@
 import app from "./api";
+import { resolverArquivoEstatico } from "./api/lib/static-path";
 
 const port = Number(process.env.PORT ?? 3000);
 const distDir = `${import.meta.dirname}/../dist`;
@@ -13,7 +14,14 @@ const server = Bun.serve({
       return app.fetch(request);
     }
 
-    const filePath = getStaticFilePath(url.pathname);
+    const filePath = resolverArquivoEstatico(distDir, indexPath, url.pathname);
+    if (!filePath) {
+      return new Response("Invalid path.", {
+        status: 400,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
     const file = Bun.file(filePath);
 
     if (await file.exists()) {
@@ -35,9 +43,3 @@ const server = Bun.serve({
 });
 
 console.log(`Web server listening on http://localhost:${server.port}`);
-
-function getStaticFilePath(pathname: string) {
-  const cleanPath = decodeURIComponent(pathname).replace(/^\/+/, "").replaceAll("..", "");
-
-  return cleanPath ? `${distDir}/${cleanPath}` : indexPath;
-}

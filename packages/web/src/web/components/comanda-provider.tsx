@@ -28,13 +28,11 @@ import {
   pessoasIniciais,
   ticketsIniciais,
 } from "../lib/demo-data";
-import { funcionarios } from "../lib/perfis";
 import { paraCentavos, paraReais, ratear } from "../lib/rateio";
 import { passosRoteiro } from "../lib/roteiro";
 import type { EventoRoteiro } from "../lib/roteiro";
 import { horaAgora } from "../lib/format";
 import { client } from "../lib/api";
-import { ORGANIZACAO_ID } from "../lib/types";
 import { useSessao } from "./sessao-provider";
 import type {
   EncerramentoSemConsumo,
@@ -201,13 +199,20 @@ const retorno: Record<TicketStatus, TicketStatus | null> = {
   entregue: null,
 };
 
-function estadoInicial(): Dados {
+function estadoInicial(organizacaoId: string): Dados {
   return {
-    mesas: mesasIniciais.map((m) => ({ ...m })),
+    mesas: mesasIniciais.map((m) => ({ ...m, organizacao_id: organizacaoId })),
     pessoas: pessoasIniciais.map((p) => ({ ...p })),
-    itens: itensIniciais.map((i) => ({ ...i })),
-    tickets: ticketsIniciais.map((t) => ({ ...t, linhas: t.linhas.map((l) => ({ ...l })) })),
-    fechamentos: fechamentosIniciais.map((f) => ({ ...f })),
+    itens: itensIniciais.map((i) => ({ ...i, organizacao_id: organizacaoId })),
+    tickets: ticketsIniciais.map((t) => ({
+      ...t,
+      organizacao_id: organizacaoId,
+      linhas: t.linhas.map((l) => ({ ...l })),
+    })),
+    fechamentos: fechamentosIniciais.map((f) => ({
+      ...f,
+      organizacao_id: organizacaoId,
+    })),
     encerramentos: [],
     anteriores: {},
   };
@@ -338,12 +343,11 @@ function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
 
 export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const { sessao, sair } = useSessao();
-  const [dados, setDados] = useState<Dados>(estadoInicial);
+  const organizacaoId = sessao!.organizacaoId;
+  const [dados, setDados] = useState<Dados>(() => estadoInicial(organizacaoId));
   const espelho = useRef<Dados>(dados);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [funcionarioAtivo] = useState<Funcionario>(
-    sessao?.funcionario ?? funcionarios[0],
-  );
+  const [funcionarioAtivo] = useState<Funcionario>(sessao!.funcionario);
   const [cardapioAtual, setCardapioAtual] = useState<MenuItem[]>(cardapio);
   const [quantidadeMesas, setQuantidadeMesas] = useState(15);
   const [larguraRecibo, setLarguraRecibo] = useState<58 | 80>(80);
@@ -418,11 +422,15 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         })
         .catch(async () => {
           epocaPersistencia.current += 1;
+          pedidosEnviados.current.clear();
+          travaEnvio.current.clear();
+          travaTicket.current.clear();
+          setEnviandoMesa(null);
           setToasts((atual) => [
             ...atual.slice(-2),
             {
               id: Date.now(),
-              text: "O salão mudou em outro dispositivo. O estado mais recente foi recarregado.",
+              text: "Não foi possível confirmar a alteração. O estado mais recente foi recarregado.",
               tone: "atencao",
             },
           ]);
@@ -584,7 +592,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
                 garcom_id:
                   funcionarioAtivo.funcionario_perfil === "garcom"
                     ? funcionarioAtivo.funcionario_id
-                    : (m.garcom_id ?? "f-rafael"),
+                    : (m.garcom_id ?? funcionarioAtivo.funcionario_id),
               }
             : m,
         ),
@@ -665,7 +673,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         }
 
         const item: OrderItem = {
-          organizacao_id: ORGANIZACAO_ID,
+          organizacao_id: organizacaoId,
           item_id: novoId("i"),
           pedido_id: null,
           mesa_id,
@@ -700,7 +708,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         registrarEvento("tabua-observacao");
       }
     },
-    [aplicar, cardapioAtual, funcionarioAtivo, novoId, registrarEvento],
+    [aplicar, cardapioAtual, funcionarioAtivo, novoId, organizacaoId, registrarEvento],
   );
 
   const alterarQuantidade = useCallback(
@@ -828,7 +836,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       }
 
       const fichas: Ticket[] = [...porDestino.entries()].map(([destino, itens]) => ({
-        organizacao_id: ORGANIZACAO_ID,
+        organizacao_id: organizacaoId,
         ticket_id: novoId("t"),
         pedido_id,
         mesa_id,
@@ -850,7 +858,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         criado_em: agora,
         enviado_em: agora,
         atualizado_em: agora,
-      }), "enviar_pedido");
+      }));
 
       aplicar((prev) => ({
         ...prev,
@@ -860,12 +868,12 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
             : i,
         ),
         tickets: [...fichas, ...prev.tickets],
-      }));
+      }), "enviar_pedido");
 
       if (mesa_id === MESA_DEMO) registrarEvento("pedido-enviado");
       return novos.reduce((soma, i) => soma + i.quantidade, 0);
     },
-    [aplicar, funcionarioAtivo, novoId, registrarEvento],
+    [aplicar, funcionarioAtivo, novoId, organizacaoId, registrarEvento],
   );
 
   /** Sincroniza a ficha e os itens da comanda vinculados a ela. */
@@ -1132,7 +1140,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       }
 
       const registro: Fechamento = {
-        organizacao_id: ORGANIZACAO_ID,
+        organizacao_id: organizacaoId,
         fechamento_id: novoId("f"),
         mesa_id,
         hora: horaAgora(),
@@ -1152,7 +1160,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           atual.itens.find(
             (i) => i.mesa_id === mesa_id && i.funcionario_perfil === "garcom",
           )?.funcionario_nome ??
-          funcionarios.find((f) => f.funcionario_id === mesa.garcom_id)?.funcionario_nome ??
+          funcionariosAtuais.find((f) => f.funcionario_id === mesa.garcom_id)
+            ?.funcionario_nome ??
           null,
       };
 
@@ -1185,7 +1194,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       }), "fechar_conta");
       return registro;
     },
-    [aplicar, funcionarioAtivo, novoId],
+    [aplicar, funcionarioAtivo, funcionariosAtuais, novoId, organizacaoId],
   );
 
   /**
@@ -1235,7 +1244,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const pessoasDaAbertura = atual.pessoas.filter((p) => p.mesa_id === mesa_id);
 
       const registro: EncerramentoSemConsumo = {
-        organizacao_id: ORGANIZACAO_ID,
+        organizacao_id: organizacaoId,
         encerramento_id: novoId("sc"),
         mesa_id,
         abertura_id,
@@ -1292,7 +1301,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
 
       return { ok: true, registro };
     },
-    [aplicar, funcionarioAtivo, novoId],
+    [aplicar, funcionarioAtivo, novoId, organizacaoId],
   );
 
   /**
@@ -1355,7 +1364,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     aberturasEncerradas.current.clear();
     snapshotsSemConsumo.current.clear();
     sequencia.current = 0;
-    const inicial = estadoInicial();
+    const inicial = estadoInicial(organizacaoId);
     espelho.current = inicial;
     setDados(inicial);
     setToasts([]);
@@ -1365,42 +1374,19 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     setPassoAtual(1);
     persistir(inicial, "reiniciar");
     notificar("Operação reiniciada: mesas, fichas e roteiro voltaram ao início.", "info");
-  }, [modoDemo, notificar, persistir]);
+  }, [modoDemo, notificar, organizacaoId, persistir]);
 
   const configurarOperacao = useCallback(
     async (quantidade: number, largura: 58 | 80) => {
-      const atual = espelho.current;
-      const maiorOcupada = atual.mesas.reduce(
-        (maior, mesa) => (mesa.status !== "livre" ? Math.max(maior, mesa.mesa_id) : maior),
-        0,
-      );
-      if (quantidade < maiorOcupada) {
-        throw new Error(`A Mesa ${maiorOcupada} está em uso e impede essa redução.`);
-      }
-      const porId = new Map(atual.mesas.map((mesa) => [mesa.mesa_id, mesa]));
-      const mesasAtualizadas = Array.from({ length: quantidade }, (_, indice) => {
-        const mesaId = indice + 1;
-        return (
-          porId.get(mesaId) ?? {
-            organizacao_id: ORGANIZACAO_ID,
-            mesa_id: mesaId,
-            status: "livre" as const,
-            ativa: false,
-            pessoasFixas: 0,
-            totalFixo: 0,
-            abertaEm: null,
-            garcom_id: null,
-            contaSolicitada: false,
-            servicoIncluso: true,
-          }
-        );
+      const resultado = await client.comanda.configurar({
+        versao: versao.current,
+        quantidadeMesas: quantidade,
+        larguraRecibo: largura,
       });
-      aplicar((prev) => ({ ...prev, mesas: mesasAtualizadas }), "alterar_comanda");
-      await client.comanda.configurar({ quantidadeMesas: quantidade, larguraRecibo: largura });
-      setQuantidadeMesas(quantidade);
-      setLarguraRecibo(largura);
+      versao.current = resultado.versao;
+      await carregarRemoto(true);
     },
-    [aplicar],
+    [carregarRemoto],
   );
 
   const salvarProduto = useCallback(async (produto: MenuItem) => {

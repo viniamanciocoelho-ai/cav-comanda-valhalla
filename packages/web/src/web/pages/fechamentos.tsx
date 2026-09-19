@@ -1,4 +1,4 @@
-// Registro dos fechamentos simulados da sessao. Nada e gravado: recarregar limpa a lista.
+// Registro persistido de fechamentos e liberações sem consumo da organização autenticada.
 
 import { useLocation } from "wouter";
 import { DoorClosed, FileCheck2, ReceiptText } from "lucide-react";

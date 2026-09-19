@@ -187,5 +187,27 @@ console.log("\nVarredura com pesos aleatorios (5.000 sorteios)");
   checar("5.000 rateios ponderados fecham exatos", ruins === 0, `${ruins} falhas`);
 }
 
+console.log("\nEntradas invalidas");
+{
+  let rejeicoes = 0;
+  for (const executar of [
+    () => ratear(10.5, [1, 1]),
+    () => ratear(100, [-1, 2]),
+    () => ratear(100, [0.5, 1]),
+    () => ratear(Number.MAX_SAFE_INTEGER, [2]),
+    () => ratear(1, [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER]),
+    () => ratear(1, []),
+    () => paraCentavos(Number.MAX_VALUE),
+    () => paraReais(0.5),
+  ]) {
+    try {
+      executar();
+    } catch (erro) {
+      if (erro instanceof RangeError) rejeicoes += 1;
+    }
+  }
+  checar("totais, pesos e conversões fora do domínio são rejeitados", rejeicoes === 8, `${rejeicoes}/8`);
+}
+
 console.log(`\n${total - falhas}/${total} verificacoes passaram`);
 if (falhas) process.exit(1);
