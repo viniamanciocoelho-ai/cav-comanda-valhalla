@@ -1204,7 +1204,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
    *
    * Idempotente: a trava por mesa barra o duplo clique e a chave de abertura barra a
    * repeticao da operacao. Equivale a procedure `mesa.encerrarSemConsumo` prevista na
-   * arquitetura final (ver ARCHITECTURE_HANDOFF.md).
+   * arquitetura final (ver Beck/README.md).
    */
   const encerrarSemConsumo = useCallback(
     ({ mesa_id, motivo, observacao = "" }: EntradaSemConsumo): ResultadoSemConsumo => {

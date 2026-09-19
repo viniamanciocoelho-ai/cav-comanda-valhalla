@@ -162,7 +162,7 @@ export type MotivoSemConsumo =
  * Auditoria de mesa liberada sem consumo. NAO e fechamento: nao gera cobranca, pagamento
  * nem documento fiscal. Existe so para a gerencia saber o que aconteceu com a mesa.
  * Na arquitetura final e a saida da procedure `mesa.encerrarSemConsumo`
- * (transacional e idempotente por `abertura_id`). Ver ARCHITECTURE_HANDOFF.md.
+ * (transacional e idempotente por `abertura_id`). Ver Beck/README.md.
  */
 export interface EncerramentoSemConsumo {
   organizacao_id: string;

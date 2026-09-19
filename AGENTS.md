@@ -2,16 +2,14 @@
 
 ## Contexto
 
-Esta e uma demonstracao web em React 19 + TypeScript + Vite, com pacotes Expo
-mobile e Electron desktop no mesmo workspace. O produto demonstrativo roda em
-memoria, sem backend, banco, autenticacao, pagamento ou emissao fiscal real.
-O estado central da demonstracao fica em
-`packages/web/src/web/components/comanda-provider.tsx`.
+Esta e uma aplicacao web em React 19 + TypeScript + Vite, com API Hono/oRPC,
+persistencia Drizzle/libSQL, autenticacao por PIN e RBAC. O monorepo tambem
+mantem pacotes Expo mobile e Electron desktop. O mapa do backend esta em
+`Beck/README.md`; o mapa da interface esta em `Front/README.md`.
 
-Preserve a separacao por `organizacao_id` em qualquer evolucao que introduza
-persistencia ou API: toda leitura, escrita, autorizacao, cache e chave de
-idempotencia deve carregar o tenant explicitamente; nunca aceite um fallback
-global ou um identificador vindo apenas do cliente.
+Preserve a separacao por `organizacao_id`: toda leitura, escrita, autorizacao,
+cache e chave de idempotencia deve carregar o tenant explicitamente; nunca
+aceite um fallback global ou um identificador vindo apenas do cliente.
 
 ## Regras de trabalho
 
@@ -46,13 +44,17 @@ bun run build:web
 bun run lint
 bun run typecheck
 cd packages/web && bunx tsc --noEmit -p tsconfig.app.json
-python3 e2e/flow.py
-python3 e2e/roteiro.py
-python3 e2e/aceite.py
-python3 e2e/sem-consumo.py
 bun e2e/monetario.ts
+bun e2e/security-regressao.ts
+bun e2e/tenant-isolation.ts
+bun e2e/fase1-api.ts
+bun e2e/recibo.ts
+bun e2e/demo-mode.ts
 bun e2e/sem-consumo.ts
 ```
+
+As suites Python sao historicas e ainda nao fazem parte do gate autenticado por
+PIN.
 
 O pacote desktop declara `bun run build` e `bun run typecheck`; o mobile
 declara `bun run typecheck`. Se Bun nao estiver instalado, registre a limitacao

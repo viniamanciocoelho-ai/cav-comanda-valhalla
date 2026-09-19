@@ -25,8 +25,7 @@ Outros comandos: `bun run build:web` (produção), `bun run lint`, `bun run star
 Validações atuais: `bun e2e/monetario.ts` (64), `bun e2e/security-regressao.ts` (16),
 `bun e2e/tenant-isolation.ts`, `bun e2e/fase1-api.ts`, `bun e2e/recibo.ts` e
 `bun e2e/demo-mode.ts`, `bun e2e/sem-consumo.ts`. As suítes Python históricas ainda dependem do fluxo
-anterior sem login e precisam ser adaptadas ao acesso por PIN antes de voltar ao gate. Resultados em
-[`TEST_REPORT.md`](./TEST_REPORT.md).
+anterior sem login e precisam ser adaptadas ao acesso por PIN antes de voltar ao gate.
 
 ## Perfis
 
@@ -113,8 +112,6 @@ e não existe item enviado, aparece a ação secundária **Encerrar sem consumo*
 - **Desfazer:** 10 segundos na própria tela da mesa, válido enquanto nada mudou depois. O registro de
   auditoria permanece, marcado como desfeito.
 
-Detalhes em [`MUDANCAS.md`](./MUDANCAS.md) e o aceite em [`TEST_REPORT.md`](./TEST_REPORT.md).
-
 ## Limitações conhecidas
 
 - **Os quatro PINs de bootstrap devem ser definidos no ambiente.** Em desenvolvimento/testes, os padrões são
@@ -144,15 +141,12 @@ Detalhes em [`MUDANCAS.md`](./MUDANCAS.md) e o aceite em [`TEST_REPORT.md`](./TE
 - **Acesso por PIN** — cada funcionário tem PIN individual e permissões de perfil.
 - **Brasão provisório** — o símbolo atual é marcador, não o logotipo final.
 
-A lista completa está em [`PROVISORIO.md`](./PROVISORIO.md).
-
 ## Documentação
 
-- [`ARCHITECTURE_HANDOFF.md`](./ARCHITECTURE_HANDOFF.md) — mapa do código, estado central, invariantes e o que vira servidor no piloto.
-- [`TEST_REPORT.md`](./TEST_REPORT.md) — as quatro suítes, o aceite das sete correções, os 10 casos monetários, limitações declaradas.
-- [`MUDANCAS.md`](./MUDANCAS.md) — o que mudou no protótipo original e o que a V2 e a V2.1 acrescentaram.
-- [`PROVISORIO.md`](./PROVISORIO.md) — o que é provisório, o que não existe e o que confirmar no local.
-- [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) — paleta, tipografia, materiais, componentes e proibições visuais.
+- [`Beck/README.md`](./Beck/README.md) — mapa do backend, persistência e invariantes de segurança.
+- [`Front/README.md`](./Front/README.md) — mapa do frontend e limites para refinamento visual.
+- [`design.md`](./design.md) — briefing visual canônico usado pelo Runable.
+- [`docs/reviews/CODEX-AUDITORIA-PROFUNDA-VALHALLA-2026-09-18.md`](./docs/reviews/CODEX-AUDITORIA-PROFUNDA-VALHALLA-2026-09-18.md) — auditoria técnica consolidada.
 - `e2e/monetario.ts` — casos monetários, invariantes e varredura exaustiva (`bun`).
 - `e2e/security-regressao.ts`, `e2e/tenant-isolation.ts` — autorização, integridade e isolamento.
 - `e2e/sem-consumo.ts` — matriz de permissão e bloqueio da regra de encerramento sem consumo (`bun`).
@@ -163,6 +157,9 @@ A lista completa está em [`PROVISORIO.md`](./PROVISORIO.md).
 ## Estrutura
 
 ```
+Beck/                       mapa e limites do backend
+Front/                      mapa e limites do frontend
+packages/web/src/api/       Hono, oRPC, Drizzle, autenticação e persistência
 packages/web/src/web/
   pages/          Salão, Garçom, Comanda, Cozinha e bar, Caixa, Fechamentos, Configuração
   components/     app-shell, provedor de estado, cardápio, divisão da conta, painel do roteiro
