@@ -4,21 +4,9 @@ Os comandos abaixo devem ser executados na raiz do repositório. Eles usam somen
 
 ## Variáveis
 
-```env
-DATABASE_URL=
-DATABASE_AUTH_TOKEN=
-CAV_BACKUP_DIR=backups
-CAV_BACKUP_RETENTION=30
-S3_ENDPOINT=
-S3_BUCKET=
-S3_REGION=auto
-S3_ACCESS_KEY_ID=
-S3_SECRET_ACCESS_KEY=
-S3_FORCE_PATH_STYLE=true
-```
-
+Use o `.env.example` da raiz como fonte única das variáveis, obrigatoriedade e padrões.
 `CAV_BACKUP_RETENTION` mantém os N arquivos mais recentes no disco e no prefixo
-`cav-comanda/` do bucket. O padrão é 30.
+`cav-comanda/` do bucket.
 
 O arquivo contém todo o banco operacional, inclusive hashes de PIN e sessões. Restrinja o
 acesso ao diretório e ao bucket. Não envie backups por e-mail ou mensageiro.
@@ -61,15 +49,10 @@ bun run restore -- --arquivo=C:/backups/arquivo.json --confirmar=odin,valhalla
 A restauração sobrescreve todas as tabelas operacionais em uma transação. Sem a confirmação
 exata, o comando para antes de alterar o banco.
 
-## Cron sugerido
+## Agendamento
 
-Exemplo diário às 03:10, ajustando os caminhos para o servidor:
-
-```cron
-10 3 * * * cd /srv/cav-comanda-valhalla/packages/web && /usr/local/bin/bun run backup >> /var/log/cav-backup.log 2>&1
-```
-
-O agendador deve alertar quando o comando retornar código diferente de zero.
+Use `deploy/cav-backup.cron.example`, ajuste o placeholder de caminho e configure o
+agendador para alertar quando o comando retornar código diferente de zero.
 
 ## Verificação periódica
 

@@ -1,138 +1,142 @@
 # Implantação do CAV Comanda Valhalla
 
-Este documento prepara o código para o servidor. Ele não escolhe provedor, domínio, proxy ou
-processo de deploy.
+Este guia cobre duas alternativas de produção. Escolha Docker ou instalação direta na VPS;
+não execute os dois caminhos ao mesmo tempo.
 
-## Requisitos
+## Requisitos comuns
 
 - Bun na versão declarada em `package.json`;
-- banco SQLite/Turso acessível pelo servidor;
-- acesso de rede às impressoras térmicas, se usadas;
-- bucket S3 compatível para os backups;
+- domínio apontado para a VPS;
+- banco SQLite local ou Turso/libSQL acessível;
+- rede entre o servidor e as impressoras térmicas;
+- bucket S3 compatível para backup;
 - somente um `.env`, na raiz do repositório.
 
-## Variáveis da aplicação
+Copie `.env.example` para `.env` e substitua todos os valores fictícios. O
+`.env.example` é a fonte única das variáveis, obrigatoriedade, padrões e mensagens de erro.
+Nunca versione o `.env`.
 
-```env
-NODE_ENV=production
-WEBSITE_URL=https://comanda.exemplo.site
-PORT=3000
+## Preparação do banco
 
-DATABASE_URL=libsql://banco.turso.io
-DATABASE_AUTH_TOKEN=token-do-banco
+O comando abaixo valida o ambiente, aplica somente migrations pendentes e confirma uma
+consulta real ao banco:
 
-CAV_ORGANIZACAO_CODIGO=valhalla
-CAV_BOOTSTRAP_PIN_GERENCIA=8462
-CAV_ALLOWED_ORIGINS=https://comanda.exemplo.site
-CAV_TIMEZONE=America/Cuiaba
+```sh
+bun run deploy:setup
 ```
 
-- `DATABASE_URL`: obrigatória. Em desenvolvimento pode ser `file:./local.sqlite`.
-- `DATABASE_AUTH_TOKEN`: obrigatória quando o banco não usa `file:`.
-- `CAV_ORGANIZACAO_CODIGO`: código digitado no login inicial.
-- `CAV_BOOTSTRAP_PIN_GERENCIA`: PIN inicial de quatro dígitos, não sequencial e sem default.
-- `WEBSITE_URL`: URL pública absoluta e HTTPS em produção.
-- `CAV_ALLOWED_ORIGINS`: origens adicionais autorizadas pelo CORS, separadas por vírgula. A
-  própria origem da requisição já é aceita.
-- `CAV_TIMEZONE`: fuso IANA usado no fechamento diário.
-- `PORT`: porta local do processo.
+Ele é idempotente e pode ser executado novamente a cada atualização. Em sucesso, informa
+quantas migrations foram aplicadas e termina com código `0`. Em falha, interrompe na etapa
+afetada, não inicia a aplicação e indica a configuração que precisa ser corrigida.
 
-O servidor valida essas variáveis e a conexão com o banco antes de abrir a porta. Uma mensagem
-de erro identifica a variável inválida.
+## Caminhos de deploy
 
-## Desenvolvimento e produção
+| Docker | VPS direta |
+| --- | --- |
+| Usa `Dockerfile` e `docker-compose.yml`. | Usa Bun no host, `systemd` e nginx. |
+| Persiste banco local e backups em volumes nomeados. | Persiste nos caminhos definidos no `.env`. |
+| O contêiner executa `deploy:setup` antes do servidor. | O unit `systemd` executa `deploy:setup` antes do servidor. |
+| Atualização: reconstruir e recriar o serviço. | Atualização: instalar, buildar e reiniciar o serviço. |
 
-| Item | Desenvolvimento | Produção |
-| --- | --- | --- |
-| `NODE_ENV` | `development` | `production` |
-| Banco | arquivo local ou banco isolado | banco remoto com token |
-| `WEBSITE_URL` | HTTP local | HTTPS público |
-| CORS | localhost é aceito | somente mesma origem e allowlist |
-| PIN inicial | secret local sem default | secret do servidor sem default |
-| Backup | diretório e bucket de teste | diretório protegido e bucket de produção |
+### Caminho A: Docker
 
-## Instalação e build
+Na raiz do repositório:
 
-Na raiz:
+```sh
+cp .env.example .env
+# Edite o .env.
+docker compose up -d --build
+docker compose ps
+```
+
+Quando `DATABASE_URL` usar `file:./.data/...`, o banco fica no volume `cav_database`. Os
+backups ficam no volume `cav_backups`. O health check do contêiner consulta
+`GET /api/health/ready`.
+
+Para atualizar:
+
+```sh
+git pull
+docker compose up -d --build
+```
+
+### Caminho B: VPS direta
+
+Instale a versão de Bun declarada pelo projeto e, na raiz:
 
 ```sh
 bun install --frozen-lockfile
 bun run typecheck
-bun run build
+bun run build:web
+bun run deploy:setup
 ```
 
-## Banco novo
-
-Com o `.env` da raiz configurado:
+Crie o usuário dedicado `cav-comanda`, ajuste os placeholders e instale o unit:
 
 ```sh
-cd packages/web
-bun run db:migrate
+sudo cp deploy/cav-comanda.service.example /etc/systemd/system/cav-comanda.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now cav-comanda
+sudo systemctl status cav-comanda
 ```
 
-Não use `db:push` em produção. As migrações `0000` a `0004` devem aparecer como aplicadas.
+O exemplo usa `Restart=always`, lê o `.env` e roda sem privilégios de root. O
+`ecosystem.config.cjs` permanece disponível para instalações que já usam PM2 e também lê o
+`.env` da raiz.
+
+Para o proxy:
+
+```sh
+sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/cav-comanda
+sudo ln -s /etc/nginx/sites-available/cav-comanda /etc/nginx/sites-enabled/cav-comanda
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Substitua o domínio e mantenha a porta do `proxy_pass` igual ao `PORT` do `.env`. Depois,
+execute o certbot para o domínio e confirme o redirecionamento HTTPS.
 
 ## Primeiro acesso
 
-1. Inicie a aplicação com o banco vazio e o PIN de gerência no ambiente.
-2. A organização e o usuário `Gerência` são criados no primeiro acesso à API.
-3. Abra a URL pública.
-4. Informe `CAV_ORGANIZACAO_CODIGO` e `CAV_BOOTSTRAP_PIN_GERENCIA`.
-5. Na tela de configuração, crie os PINs individuais de garçom, produção e caixa.
-6. Troque o PIN inicial da gerência após confirmar o acesso.
+1. Abra a URL pública.
+2. Entre com `CAV_ORGANIZACAO_CODIGO` e o PIN inicial de gerência.
+3. Troque o PIN inicial.
+4. Cadastre os PINs individuais de garçom, produção e caixa.
+5. Confira mesas, cardápio e preços.
 
-O sistema não possui PIN padrão. Sem a variável correta, o processo não inicia.
+Não existe PIN padrão. Os PINs de garçom, produção e caixa não vêm do ambiente.
 
 ## Impressoras
 
-Depois do primeiro login:
-
-1. entre como gerência;
-2. abra `Configuração`;
-3. configure bar, cozinha e caixa;
-4. informe nome, IP ou hostname, porta, largura 58/80 mm e ative;
-5. use o botão de teste de cada destino;
-6. se a rede falhar, mantenha o fallback do navegador até corrigir a conectividade.
-
-O servidor precisa alcançar as impressoras na porta configurada, normalmente 9100.
+Na tela `Configuração`, cadastre bar, cozinha e caixa com IP ou hostname, porta e largura
+58/80 mm. O servidor precisa alcançar os três destinos pela rede. Faça o teste físico em cada
+impressora antes da abertura da operação.
 
 ## Backup
 
-Configure as variáveis S3 descritas em [BACKUP-E-RESTAURACAO.md](./BACKUP-E-RESTAURACAO.md).
-O cron sugerido é:
-
-```cron
-10 3 * * * cd /srv/cav-comanda-valhalla/packages/web && /usr/local/bin/bun run backup >> /var/log/cav-backup.log 2>&1
-```
-
-Teste a restauração em banco isolado antes de liberar produção.
+Instale o agendamento de `deploy/cav-backup.cron.example`, monitore o código de saída e o log,
+e siga [BACKUP-E-RESTAURACAO.md](./BACKUP-E-RESTAURACAO.md). Uma cópia local não transforma
+falha no S3 em sucesso: o comando termina com erro e preserva o caminho do arquivo criado.
 
 ## Saúde
 
 - `GET /api/health`: processo HTTP vivo.
 - `GET /api/health/ready`: aplicação e consulta real ao banco.
 
-Resposta pronta:
+O endpoint de readiness retorna HTTP `200` quando o banco responde e `503` quando está
+indisponível, sem expor credenciais.
 
-```json
-{"status":"ok","app":"ok","database":"ok","timestamp":"2026-09-19T00:00:00.000Z"}
-```
+## Checklist final de go-live
 
-Quando o banco não responde, `/api/health/ready` devolve HTTP 503 sem expor credenciais nem a
-mensagem interna do driver.
-
-## Checklist
-
-- `bun install --frozen-lockfile` concluído;
-- typecheck e build verdes;
-- migrações aplicadas;
-- `/api/health/ready` em HTTP 200;
-- login inicial da gerência funcionando;
-- PINs individuais criados;
-- cardápio e preços conferidos;
-- teste das três impressoras concluído;
-- abertura, pedido, produção e fechamento de uma mesa de teste concluídos;
-- relatório diário fechando com o valor da mesa;
-- backup local e S3 criados;
-- restauração validada em banco isolado;
-- `.env`, banco local, logs e backups fora do Git.
+- [ ] Domínio apontado para a VPS.
+- [ ] TLS ativo, válido e com redirecionamento HTTPS.
+- [ ] `.env` preenchido a partir de `.env.example` e fora do Git.
+- [ ] `bun run deploy:setup` executado com sucesso.
+- [ ] `GET /api/health/ready` respondendo HTTP `200`.
+- [ ] Login da gerência e os quatro perfis verificados.
+- [ ] Cardápio, preços, mesas e fuso horário conferidos.
+- [ ] **OBRIGATÓRIO ANTES DE OPERAR: cron de backup instalado, execução confirmada e restauração real testada em banco isolado.**
+- [ ] **OBRIGATÓRIO ANTES DE OPERAR: IP ou hostname das impressoras de bar, cozinha e caixa preenchidos na configuração.**
+- [ ] **OBRIGATÓRIO ANTES DE OPERAR: impressão física testada com sucesso nos três destinos.**
+- [ ] Fluxo completo de abertura, pedido, produção, caixa e fechamento validado.
+- [ ] Relatório diário conferido contra um fechamento de teste.
