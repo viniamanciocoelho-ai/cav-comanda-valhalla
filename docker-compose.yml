@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      CAV_BACKUP_DIR: /app/backups
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - cav_database:/app/.data
+      - cav_backups:/app/backups
+    restart: unless-stopped
+
+volumes:
+  cav_database:
+  cav_backups:
