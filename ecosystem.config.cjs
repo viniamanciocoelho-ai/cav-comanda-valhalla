@@ -5,7 +5,7 @@ module.exports = {
     {
       name: "web-app",
       cwd: __dirname,
-      script: "packages/web/src/__server.ts",
+      script: "packages/web/src/server.ts",
       interpreter: "bun",
       interpreter_args: ["--env-file=.env"],
       exec_mode: "fork",

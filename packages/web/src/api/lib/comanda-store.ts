@@ -75,7 +75,10 @@ const ORGANIZACAO_PADRAO = "valhalla";
 const HASH_PIN_NEUTRO = gerarHashPin("0000");
 
 export function configuracaoBootstrap() {
-  const codigo = process.env.CAV_ORGANIZACAO_CODIGO?.trim().toLowerCase() || "valhalla";
+  const codigo = process.env.CAV_ORGANIZACAO_CODIGO?.trim().toLowerCase() ?? "";
+  if (!/^[a-z0-9_-]{2,60}$/.test(codigo)) {
+    throw new Error("Configure CAV_ORGANIZACAO_CODIGO com um código válido.");
+  }
   const pinGerencia = process.env.CAV_BOOTSTRAP_PIN_GERENCIA?.trim() ?? "";
   if (!pinOperacionalValido(pinGerencia)) {
     throw new Error(

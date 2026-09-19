@@ -19,6 +19,7 @@ export async function prepararBancoTeste(nome: string) {
   const databaseUrl = `file:${arquivo.replaceAll("\\", "/")}`;
   process.env.DATABASE_URL = databaseUrl;
   delete process.env.DATABASE_AUTH_TOKEN;
+  process.env.CAV_ORGANIZACAO_CODIGO = "valhalla";
   process.env.CAV_BOOTSTRAP_PIN_GERENCIA = PIN_GERENCIA_TESTE;
   delete process.env.CAV_BOOTSTRAP_PIN_GARCOM;
   delete process.env.CAV_BOOTSTRAP_PIN_PRODUCAO;

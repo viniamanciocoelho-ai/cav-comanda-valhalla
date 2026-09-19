@@ -4,6 +4,7 @@ import { ping } from "./routes/ping";
 import { comanda, login, logout } from "./routes/comanda";
 import { impressao } from "./routes/impressao";
 import { relatorio } from "./routes/relatorio";
+import { verificarSaude } from "./lib/health";
 
 // API features are oRPC procedures, one file per feature in ./routes/,
 // composed into this router — typed end-to-end via the clients
@@ -26,5 +27,9 @@ export type AppRouterClient = RouterClient<AppRouter>;
 const app = createApp(router);
 // Rare plain-HTTP endpoints (webhooks, streaming, the Better Auth handler)
 // register here with full paths, e.g. app.post("/api/webhooks/example", ...)
+app.get("/api/health/ready", async (context) => {
+  const saude = await verificarSaude();
+  return context.json(saude.corpo, saude.statusHttp);
+});
 
 export default app;
