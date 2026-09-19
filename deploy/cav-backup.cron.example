@@ -1,0 +1,4 @@
+# Backup diario as 03:10. Substitua somente o placeholder de caminho antes de instalar no crontab.
+10 3 * * * cd /CAMINHO/ABSOLUTO/cav-comanda-valhalla/packages/web && /usr/local/bin/bun run backup >> /var/log/cav-comanda-backup.log 2>&1
+
+# Verifique a execucao em /var/log/cav-comanda-backup.log e teste periodicamente uma restauracao em banco isolado.

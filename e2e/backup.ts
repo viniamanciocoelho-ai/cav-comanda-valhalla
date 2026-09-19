@@ -64,6 +64,35 @@ try {
   assert.match(resultadoS3.erroS3 ?? "", /S3 indisponível/);
   assert.equal(await Bun.file(resultadoS3.arquivo).exists(), true);
 
+  const processoBackupParcial = Bun.spawn(
+    ["bun", "packages/web/scripts/backup.ts"],
+    {
+      cwd: path.resolve(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        CAV_BACKUP_DIR: diretorio,
+        S3_ENDPOINT: "https://s3.exemplo.invalid",
+        S3_BUCKET: "",
+        S3_ACCESS_KEY_ID: "",
+        S3_SECRET_ACCESS_KEY: "",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  const [saidaBackupParcial, erroBackupParcial, codigoBackupParcial] =
+    await Promise.all([
+      new Response(processoBackupParcial.stdout).text(),
+      new Response(processoBackupParcial.stderr).text(),
+      processoBackupParcial.exited,
+    ]);
+  assert.notEqual(codigoBackupParcial, 0);
+  assert.match(saidaBackupParcial, /Backup local criado:/);
+  assert.match(
+    erroBackupParcial,
+    /Configuração S3 incompleta\. Defina: S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY\./,
+  );
+
   for (let indice = 2; indice <= 5; indice += 1) {
     await gravarBackupLocal(
       { ...backup, criadoEm: `2026-09-19T12:0${indice}:00.000Z` },

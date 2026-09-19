@@ -31,10 +31,16 @@ function clienteS3DoAmbiente() {
   const bucket = process.env.S3_BUCKET?.trim();
   const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
   const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
-  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
-    throw new Error(
-      "Configure S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY.",
-    );
+  const faltantes = [
+    ["S3_ENDPOINT", endpoint],
+    ["S3_BUCKET", bucket],
+    ["S3_ACCESS_KEY_ID", accessKeyId],
+    ["S3_SECRET_ACCESS_KEY", secretAccessKey],
+  ]
+    .filter(([, valor]) => !valor)
+    .map(([nome]) => nome);
+  if (faltantes.length > 0) {
+    throw new Error(`Configuração S3 incompleta. Defina: ${faltantes.join(", ")}.`);
   }
   return {
     bucket,
