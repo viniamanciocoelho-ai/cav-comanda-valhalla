@@ -22,8 +22,11 @@ Abra `http://localhost:4200`. As fontes estão dentro do projeto, então a demon
 
 Outros comandos: `bun run build:web` (produção), `bun run lint`, `bun run start` / `bun run stop`.
 
-Testes: `python3 e2e/aceite.py` (246 verificações), `bun e2e/monetario.ts` (63), `python3 e2e/roteiro.py` (79),
-`python3 e2e/flow.py` (63). Resultados em [`TEST_REPORT.md`](./TEST_REPORT.md).
+Validações atuais: `bun e2e/monetario.ts` (64), `bun e2e/security-regressao.ts` (16),
+`bun e2e/tenant-isolation.ts`, `bun e2e/fase1-api.ts`, `bun e2e/recibo.ts` e
+`bun e2e/demo-mode.ts`, `bun e2e/sem-consumo.ts`. As suítes Python históricas ainda dependem do fluxo
+anterior sem login e precisam ser adaptadas ao acesso por PIN antes de voltar ao gate. Resultados em
+[`TEST_REPORT.md`](./TEST_REPORT.md).
 
 ## Perfis
 
@@ -116,6 +119,8 @@ Detalhes em [`MUDANCAS.md`](./MUDANCAS.md) e o aceite em [`TEST_REPORT.md`](./TE
 
 - **Os quatro PINs de bootstrap devem ser definidos no ambiente.** Em desenvolvimento/testes, os padrões são
   `1111`, `2222`, `3333` e `4444`; em produção os quatro `CAV_BOOTSTRAP_PIN_*` são obrigatórios.
+- **Frontend e API em origens diferentes exigem allowlist.** Defina `CAV_ALLOWED_ORIGINS` com origens
+  completas separadas por vírgula. A própria origem é aceita automaticamente.
 - **Não existe desconto no sistema.** A aritmética de valor negativo já é tratada em `ratear()`, mas o
   recurso em si não foi construído.
 - **O "Desfazer" do encerramento sem consumo vive na memória da aba.** São 10 segundos, válidos enquanto
@@ -148,11 +153,11 @@ A lista completa está em [`PROVISORIO.md`](./PROVISORIO.md).
 - [`MUDANCAS.md`](./MUDANCAS.md) — o que mudou no protótipo original e o que a V2 e a V2.1 acrescentaram.
 - [`PROVISORIO.md`](./PROVISORIO.md) — o que é provisório, o que não existe e o que confirmar no local.
 - [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) — paleta, tipografia, materiais, componentes e proibições visuais.
-- `e2e/aceite.py` — aceite das sete correções da V2.1 e o roteiro de 20 passos, em três resoluções.
-- `e2e/monetario.ts` — os 10 casos monetários obrigatórios, invariantes e varredura exaustiva (`bun`).
-- `e2e/sem-consumo.py` — os 13 testes do encerramento sem consumo, em 390 × 844 e 1440 × 900.
+- `e2e/monetario.ts` — casos monetários, invariantes e varredura exaustiva (`bun`).
+- `e2e/security-regressao.ts`, `e2e/tenant-isolation.ts` — autorização, integridade e isolamento.
 - `e2e/sem-consumo.ts` — matriz de permissão e bloqueio da regra de encerramento sem consumo (`bun`).
-- `e2e/flow.py`, `e2e/roteiro.py` — suítes de teste automatizado (Playwright sobre o Chrome local).
+- `e2e/aceite.py`, `e2e/sem-consumo.py`, `e2e/flow.py`, `e2e/roteiro.py` — suítes históricas de navegador;
+  requerem atualização para autenticar por PIN.
 - `e2e/shots/`, `docs/screenshots/` — capturas.
 
 ## Estrutura

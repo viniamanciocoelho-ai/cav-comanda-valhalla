@@ -2,6 +2,9 @@
 
 Data: 18 de setembro de 2026
 
+> Relatório histórico da primeira correção da Fase 1. A auditoria mais recente e seus
+> bloqueios estão em `CODEX-AUDITORIA-PROFUNDA-VALHALLA-2026-09-18.md`.
+
 ## Escopo
 
 Foi revisado o pacote `cav-comanda-valhalla-codigo (1).zip` e o prompt de fechamento da
