@@ -20,6 +20,7 @@
     "db:generate": "turbo db:generate",
     "db:migrate": "turbo db:migrate",
     "db:push": "turbo db:push",
+    "deploy:setup": "cd packages/web && bun --env-file=../../.env scripts/deploy-setup.ts",
     "internal:kill-port": "lsof -t -i :$(bun --print \"require('./__ports.cjs').website\") | xargs kill -9"
   },
   "devDependencies": {
