@@ -27,6 +27,7 @@ RUN bun install --frozen-lockfile --production
 
 COPY --from=build --chown=bun:bun /app/packages/web/dist packages/web/dist
 COPY --chown=bun:bun packages/web/src/api packages/web/src/api
+COPY --chown=bun:bun packages/web/src/web/lib packages/web/src/web/lib
 COPY --chown=bun:bun packages/web/src/server.ts packages/web/src/server.ts
 COPY --chown=bun:bun packages/web/src/__server.ts packages/web/src/__server.ts
 COPY --chown=bun:bun packages/web/drizzle packages/web/drizzle
