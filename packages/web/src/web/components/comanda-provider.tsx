@@ -369,7 +369,7 @@ function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
 }
 
 export function ComandaProvider({ children }: { children: React.ReactNode }) {
-  const { sessao, sair } = useSessao();
+  const { sessao, sair, estadoRestaurado, carregarEstadoInicial } = useSessao();
   const organizacaoId = sessao!.organizacaoId;
   const [dados, setDados] = useState<Dados>(() => estadoInicial());
   const espelho = useRef<Dados>(dados);
@@ -404,6 +404,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const agendamentoDreno = useRef<number | null>(null);
   const [enviandoMesa, setEnviandoMesa] = useState<number | null>(null);
   const avisosImpressao = useRef(new Set<string>());
+  const consultaRemota = useRef<
+    Promise<Awaited<ReturnType<typeof client.comanda.estado>>> | null
+  >(null);
 
   // Sequencial para ids unicos, mesmo com dois lancamentos no mesmo milissegundo.
   const sequencia = useRef(0);
@@ -469,9 +472,20 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [organizacaoId],
   );
 
-  const carregarRemoto = useCallback(async (forcar = false) => {
+  const consultarRemoto = useCallback(() => {
+    consultaRemota.current ??= client.comanda.estado().finally(() => {
+      consultaRemota.current = null;
+    });
+    return consultaRemota.current;
+  }, []);
+
+  const carregarRemoto = useCallback(async (
+    forcar = false,
+    consultar: () => Promise<Awaited<ReturnType<typeof client.comanda.estado>>> =
+      consultarRemoto,
+  ) => {
     try {
-      const remoto = await client.comanda.estado();
+      const remoto = await consultar();
       if (forcar || escritasPendentes.current === 0) aplicarRemoto(remoto);
       hidratado.current = true;
       setCarregando(false);
@@ -500,7 +514,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       setCarregando(false);
       throw erro;
     }
-  }, [aplicarRemoto, organizacaoId]);
+  }, [aplicarRemoto, consultarRemoto, organizacaoId]);
 
   const drenarFila = useCallback(async () => {
     if (drenandoFila.current || !filaOffline.current.length || !hidratado.current) return;
@@ -542,7 +556,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           const codigo = codigoDoErro(erro);
           if (codigo === "CONFLICT" || /atualizado em outro dispositivo|conflict/i.test(String(erro))) {
             try {
-              const remoto = await client.comanda.estado();
+              const remoto = await consultarRemoto();
               aplicarRemoto(remoto);
               const rebase = reaplicarAcao(remoto.estado as Dados, atual);
               if (rebase.conflitos.length) {
@@ -595,7 +609,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           filaOffline.current = filaOffline.current.slice(1);
           salvarFila(organizacaoId, filaOffline.current);
           setAcoesPendentes(filaOffline.current.length);
-          const remoto = await client.comanda.estado().catch(() => null);
+          const remoto = await consultarRemoto().catch(() => null);
           if (remoto) aplicarRemoto(remoto);
           setToasts((atualToasts) => [
             ...atualToasts.slice(-2),
@@ -606,7 +620,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     } finally {
       drenandoFila.current = false;
     }
-  }, [aplicarRemoto, falhasOffline, organizacaoId]);
+  }, [aplicarRemoto, consultarRemoto, falhasOffline, organizacaoId]);
 
   useEffect(() => {
     const snapshot = carregarSnapshot(organizacaoId);
@@ -629,7 +643,10 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       hidratado.current = true;
       setCarregando(false);
     }
-    void carregarRemoto().catch(() => undefined);
+    void carregarRemoto(
+      false,
+      estadoRestaurado ? async () => estadoRestaurado : carregarEstadoInicial,
+    ).catch(() => undefined);
     void drenarFila();
     const mudouConexao = () => {
       if (navigator.onLine) void drenarFila();
@@ -648,7 +665,13 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("online", mudouConexao);
       window.removeEventListener("offline", mudouConexao);
     };
-  }, [carregarRemoto, drenarFila, organizacaoId]);
+  }, [
+    carregarEstadoInicial,
+    carregarRemoto,
+    drenarFila,
+    estadoRestaurado,
+    organizacaoId,
+  ]);
 
   const persistir = useCallback(
     (

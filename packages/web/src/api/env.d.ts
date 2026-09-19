@@ -7,6 +7,7 @@ declare global {
       CAV_BOOTSTRAP_PIN_GERENCIA?: string;
       CAV_ALLOWED_ORIGINS?: string;
       CAV_TIMEZONE?: string;
+      CAV_LIMITE_BANCO_MB?: string;
       WEBSITE_URL?: string;
       PORT?: string;
       CAV_BACKUP_DIR?: string;

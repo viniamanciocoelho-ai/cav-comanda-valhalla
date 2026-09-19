@@ -85,12 +85,22 @@ async function encerrarServidor() {
   ]);
 }
 
-test("login por PIN renderiza a tela principal sem erros e permite sair", async ({ page }) => {
+test("login por PIN renderiza a tela principal sem erros e permite sair", async ({
+  page,
+  context,
+}) => {
   const erros = [];
-  page.on("pageerror", (erro) => erros.push(`pageerror: ${erro.message}`));
-  page.on("console", (mensagem) => {
-    if (mensagem.type() === "error") erros.push(`console: ${mensagem.text()}`);
-  });
+  const registrarErros = (pagina) => {
+    pagina.on("pageerror", (erro) => erros.push(`pageerror: ${erro.message}`));
+    pagina.on("console", (mensagem) => {
+      if (mensagem.type() === "error") erros.push(`console: ${mensagem.text()}`);
+    });
+  };
+  registrarErros(page);
+
+  const saude = await page.request.get(`${baseURL}/api/saude`);
+  expect(saude.status()).toBe(200);
+  expect(await saude.json()).toEqual({ ok: true });
 
   await page.goto("/");
   await expect(page.getByTestId("login-pin")).toBeVisible();
@@ -103,8 +113,28 @@ test("login por PIN renderiza a tela principal sem erros e permite sair", async 
   await expect(page.getByRole("heading", { name: "Visão do salão" })).toBeVisible();
   await expect(page.getByTestId("status-conexao")).toBeVisible();
 
-  await page.getByTestId("trocar-perfil").click();
-  await page.getByRole("button", { name: "Sair" }).click();
-  await expect(page.getByTestId("login-pin")).toBeVisible();
+  let leiturasEstado = 0;
+  const requisicoesEstado = [];
+  const paginaRestaurada = await context.newPage();
+  registrarErros(paginaRestaurada);
+  paginaRestaurada.on("request", (request) => {
+    if (!request.url().includes("/api/rpc/comanda/estado")) return;
+    leiturasEstado += 1;
+    requisicoesEstado.push({
+      method: request.method(),
+      resourceType: request.resourceType(),
+      postData: request.postData(),
+    });
+  });
+  await page.close();
+  await paginaRestaurada.goto("/");
+  await expect(
+    paginaRestaurada.getByRole("heading", { name: "Visão do salão" }),
+  ).toBeVisible();
+  expect(leiturasEstado, JSON.stringify(requisicoesEstado)).toBe(1);
+
+  await paginaRestaurada.getByTestId("trocar-perfil").click();
+  await paginaRestaurada.getByRole("button", { name: "Sair" }).click();
+  await expect(paginaRestaurada.getByTestId("login-pin")).toBeVisible();
   expect(erros).toEqual([]);
 });

@@ -43,6 +43,19 @@ assert.throws(
   /CAV_TIMEZONE/,
 );
 assert.equal(validarConfiguracaoAmbiente(producao).port, 3000);
+assert.equal(validarConfiguracaoAmbiente(producao).limiteBancoMb, undefined);
+assert.equal(
+  validarConfiguracaoAmbiente({ ...producao, CAV_LIMITE_BANCO_MB: "1024" }).limiteBancoMb,
+  1024,
+);
+assert.throws(
+  () => validarConfiguracaoAmbiente({ ...producao, CAV_LIMITE_BANCO_MB: "0" }),
+  /CAV_LIMITE_BANCO_MB/,
+);
+assert.throws(
+  () => validarConfiguracaoAmbiente({ ...producao, CAV_LIMITE_BANCO_MB: "invalido" }),
+  /CAV_LIMITE_BANCO_MB/,
+);
 assert.equal(
   validarConfiguracaoAmbiente({
     NODE_ENV: "development",

@@ -12,6 +12,7 @@ export interface ConfiguracaoAplicacao {
   origensPermitidas: string[];
   timeZone: string;
   port: number;
+  limiteBancoMb?: number;
 }
 
 function urlHttp(nome: string, valor: string) {
@@ -33,6 +34,16 @@ function validarTimeZone(valor: string) {
   } catch {
     throw new Error("CAV_TIMEZONE deve ser um fuso IANA válido, como America/Cuiaba.");
   }
+}
+
+export function limiteBancoMbDoAmbiente(env: Ambiente = process.env) {
+  const texto = env.CAV_LIMITE_BANCO_MB?.trim();
+  if (!texto) return undefined;
+  const limite = Number(texto);
+  if (!Number.isFinite(limite) || limite <= 0) {
+    throw new Error("CAV_LIMITE_BANCO_MB deve ser um número positivo.");
+  }
+  return limite;
 }
 
 export function validarConfiguracaoAmbiente(
@@ -88,6 +99,7 @@ export function validarConfiguracaoAmbiente(
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("PORT deve ser um inteiro entre 1 e 65535.");
   }
+  const limiteBancoMb = limiteBancoMbDoAmbiente(env);
   return {
     nodeEnv: nodeEnv as ConfiguracaoAplicacao["nodeEnv"],
     databaseUrl,
@@ -98,5 +110,6 @@ export function validarConfiguracaoAmbiente(
     origensPermitidas,
     timeZone,
     port,
+    limiteBancoMb,
   };
 }

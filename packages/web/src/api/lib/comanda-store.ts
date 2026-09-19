@@ -229,7 +229,10 @@ export async function garantirOrganizacaoPadrao() {
     .limit(1);
   if (existente.length) {
     await sincronizarCardapioReal(existente[0].organizacaoId);
-    return;
+    return {
+      codigo: bootstrap.codigo,
+      organizacaoId: existente[0].organizacaoId,
+    };
   }
 
   const instante = agora();
@@ -276,6 +279,10 @@ export async function garantirOrganizacaoPadrao() {
       cardapioInicial,
     );
   });
+  return {
+    codigo: bootstrap.codigo,
+    organizacaoId: ORGANIZACAO_PADRAO,
+  };
 }
 
 type Transacao = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -464,13 +471,19 @@ async function gravarEstadoTx(
 }
 
 export async function autenticar(codigo: string, pin: string): Promise<SessaoAutenticada | null> {
-  await garantirOrganizacaoPadrao();
-  const [organizacao] = await db
-    .select()
-    .from(organizacoes)
-    .where(eq(organizacoes.codigo, codigo.trim().toLowerCase()))
-    .limit(1);
-  if (!organizacao) {
+  const padrao = await garantirOrganizacaoPadrao();
+  const codigoNormalizado = codigo.trim().toLowerCase();
+  const organizacaoId =
+    codigoNormalizado === padrao.codigo
+      ? padrao.organizacaoId
+      : (
+          await db
+            .select({ organizacaoId: organizacoes.organizacaoId })
+            .from(organizacoes)
+            .where(eq(organizacoes.codigo, codigoNormalizado))
+            .limit(1)
+        )[0]?.organizacaoId;
+  if (!organizacaoId) {
     await conferirPin(pin, await HASH_PIN_NEUTRO);
     return null;
   }
@@ -479,7 +492,7 @@ export async function autenticar(codigo: string, pin: string): Promise<SessaoAut
     .from(funcionariosTabela)
     .where(
       and(
-        eq(funcionariosTabela.organizacaoId, organizacao.organizacaoId),
+        eq(funcionariosTabela.organizacaoId, organizacaoId),
         eq(funcionariosTabela.ativo, true),
       ),
     );
@@ -489,14 +502,14 @@ export async function autenticar(codigo: string, pin: string): Promise<SessaoAut
     const instante = agora();
     await db.insert(sessoes).values({
       tokenHash: await sha256(token),
-      organizacaoId: organizacao.organizacaoId,
+      organizacaoId,
       funcionarioId: candidato.funcionarioId,
       criadoEm: instante,
       expiraEm: new Date(Date.now() + 12 * 60 * 60_000).toISOString(),
     });
     return {
       token,
-      organizacaoId: organizacao.organizacaoId,
+      organizacaoId,
       funcionario: {
         funcionario_id: candidato.funcionarioId,
         funcionario_nome: candidato.nome,
@@ -514,36 +527,38 @@ export async function obterSessao(cabecalho: string | null): Promise<SessaoAuten
   const token = cabecalho?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return null;
   const tokenHash = await sha256(token);
-  const [sessao] = await db
-    .select()
+  const [registro] = await db
+    .select({
+      organizacaoId: sessoes.organizacaoId,
+      funcionarioId: sessoes.funcionarioId,
+      expiraEm: sessoes.expiraEm,
+      nome: funcionariosTabela.nome,
+      perfil: funcionariosTabela.perfil,
+    })
     .from(sessoes)
-    .where(eq(sessoes.tokenHash, tokenHash))
-    .limit(1);
-  if (!sessao) return null;
-  if (new Date(sessao.expiraEm).getTime() <= Date.now()) {
-    await db.delete(sessoes).where(eq(sessoes.tokenHash, tokenHash));
-    return null;
-  }
-  const [funcionario] = await db
-    .select()
-    .from(funcionariosTabela)
-    .where(
+    .innerJoin(
+      funcionariosTabela,
       and(
-        eq(funcionariosTabela.organizacaoId, sessao.organizacaoId),
-        eq(funcionariosTabela.funcionarioId, sessao.funcionarioId),
+        eq(funcionariosTabela.organizacaoId, sessoes.organizacaoId),
+        eq(funcionariosTabela.funcionarioId, sessoes.funcionarioId),
         eq(funcionariosTabela.ativo, true),
       ),
     )
+    .where(eq(sessoes.tokenHash, tokenHash))
     .limit(1);
-  if (!funcionario) return null;
+  if (!registro) return null;
+  if (new Date(registro.expiraEm).getTime() <= Date.now()) {
+    await db.delete(sessoes).where(eq(sessoes.tokenHash, tokenHash));
+    return null;
+  }
   return {
     token,
-    organizacaoId: sessao.organizacaoId,
+    organizacaoId: registro.organizacaoId,
     funcionario: {
-      funcionario_id: funcionario.funcionarioId,
-      funcionario_nome: funcionario.nome,
-      funcionario_perfil: funcionario.perfil,
-      rotulo: funcionario.nome,
+      funcionario_id: registro.funcionarioId,
+      funcionario_nome: registro.nome,
+      funcionario_perfil: registro.perfil,
+      rotulo: registro.nome,
       resumo: "",
       ativo: true,
     },
@@ -570,7 +585,7 @@ export async function lerEstado(organizacaoId: string) {
     linhasFuncionarios,
     linhasImpressoras,
     linhasFilaImpressoes,
-  ] = await Promise.all([
+  ] = await db.batch([
     db.select().from(versoesEstado).where(eq(versoesEstado.organizacaoId, organizacaoId)).limit(1),
     db.select().from(mesas).where(eq(mesas.organizacaoId, organizacaoId)),
     db.select().from(pessoasDaComanda).where(eq(pessoasDaComanda.organizacaoId, organizacaoId)),
@@ -595,7 +610,7 @@ export async function lerEstado(organizacaoId: string) {
       .select()
       .from(filaImpressoes)
       .where(eq(filaImpressoes.organizacaoId, organizacaoId)),
-  ]);
+  ] as const);
 
   const estado: EstadoPersistido = {
     mesas: linhasMesas.map((mesa) => ({

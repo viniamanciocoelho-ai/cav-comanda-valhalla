@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "../database";
 import {
   cancelamentosAutorizados,
@@ -182,7 +182,12 @@ export async function obterRelatorioDiario(
   data: string,
 ): Promise<RelatorioDiario> {
   const { inicio, fim } = limitesDoDia(data);
-  const [linhasFechamentos, linhasSemConsumo, linhasCancelamentos] = await Promise.all([
+  const [
+    linhasFechamentos,
+    linhasSemConsumo,
+    linhasCancelamentos,
+    linhasItens,
+  ] = await db.batch([
     db
       .select()
       .from(fechamentos)
@@ -213,19 +218,31 @@ export async function obterRelatorioDiario(
           lt(cancelamentosAutorizados.autorizadoEm, fim),
         ),
       ),
-  ]);
-  const ids = linhasFechamentos.map((fechamento) => fechamento.fechamentoId);
-  const linhasItens = ids.length
-    ? await db
-        .select()
-        .from(itensFechamento)
-        .where(
-          and(
-            eq(itensFechamento.organizacaoId, organizacaoId),
-            inArray(itensFechamento.fechamentoId, ids),
-          ),
-        )
-    : [];
+    db
+      .select({
+        fechamentoId: itensFechamento.fechamentoId,
+        produtoId: itensFechamento.produtoId,
+        nome: itensFechamento.nome,
+        precoCentavos: itensFechamento.precoCentavos,
+        quantidade: itensFechamento.quantidade,
+        destinoProducao: itensFechamento.destinoProducao,
+      })
+      .from(itensFechamento)
+      .innerJoin(
+        fechamentos,
+        and(
+          eq(fechamentos.organizacaoId, itensFechamento.organizacaoId),
+          eq(fechamentos.fechamentoId, itensFechamento.fechamentoId),
+        ),
+      )
+      .where(
+        and(
+          eq(itensFechamento.organizacaoId, organizacaoId),
+          gte(fechamentos.criadoEm, inicio),
+          lt(fechamentos.criadoEm, fim),
+        ),
+      ),
+  ] as const);
   return calcularRelatorioDiario(
     data,
     linhasFechamentos,
