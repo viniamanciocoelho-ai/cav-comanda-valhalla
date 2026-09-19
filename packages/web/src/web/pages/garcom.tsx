@@ -6,7 +6,7 @@ import { ArrowRight, BellRing, Check, Clock, DoorOpen, Send, Users } from "lucid
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
-import { DemoTag, Metric, SectionHeading, StatusPill } from "../components/ui/pieces";
+import { Metric, SectionHeading, StatusPill } from "../components/ui/pieces";
 import {
   desde,
   destinoLabel,
@@ -80,11 +80,6 @@ export default function GarcomPage() {
       titulo="Minhas mesas"
       subtitulo={`${funcionarioAtivo.funcionario_nome}${funcionarioAtivo.turno ? ` · ${funcionarioAtivo.turno}` : ""}`}
     >
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <DemoTag>Dados sincronizados</DemoTag>
-        <DemoTag>Cardápio provisório</DemoTag>
-      </div>
-
       {/* Indicadores da operação do garçom: nada de faturamento do salão. */}
       <section className="border-line bg-surface mb-7 grid grid-cols-2 divide-y divide-[var(--vh-border)] overflow-hidden rounded-md border sm:grid-cols-4 sm:divide-y-0">
         <div className="border-line border-r">
@@ -241,8 +236,6 @@ export default function GarcomPage() {
                       {money(conta.total)}
                     </p>
                   </div>
-
-                  {mesa.demonstracao ? <DemoTag>Mesa do roteiro</DemoTag> : null}
 
                   <span className="font-display text-gold mt-1 inline-flex items-center gap-1.5 text-[12px] tracking-[0.14em] uppercase">
                     {conta.novos ? (

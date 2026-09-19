@@ -1,6 +1,6 @@
 # CAV Comanda | Valhalla
 
-Demonstração navegável de um sistema de comandas **por mesa e por pessoa**, feita para a reunião comercial com a
+Sistema de comandas **por mesa e por pessoa** para a
 **Valhalla Choperia** (Três Lagoas/MS). A Fase 1 adiciona API Hono/oRPC, persistência Drizzle/libSQL,
 sessão por PIN, RBAC e isolamento por `organizacao_id`.
 
@@ -9,7 +9,7 @@ mesa e pessoa, a cozinha e o bar recebem a ficha, o gerente acompanha o salão e
 conta. O estado é compartilhado entre telas e persistido no banco.
 
 Roda no navegador, em celular, tablet ou computador. Pagamento integrado e emissão fiscal continuam fora desta
-fase. O modo demo é habilitado por `CAV_DEMO_MODE=true`; fora dele, o banco inicia sem dados fictícios.
+fase. O banco inicia com o cardápio operacional e mesas livres, sem dados de atendimento.
 
 ## Executar
 
@@ -18,14 +18,13 @@ bun install
 bun run dev
 ```
 
-Abra `http://localhost:4200`. As fontes estão dentro do projeto, então a demonstração funciona sem internet.
+Abra `http://localhost:4200`. As fontes estão dentro do projeto para manter a interface disponível sem internet.
 
 Outros comandos: `bun run build:web` (produção), `bun run lint`, `bun run start` / `bun run stop`.
 
-Validações atuais: `bun e2e/monetario.ts` (64), `bun e2e/security-regressao.ts` (16),
-`bun e2e/tenant-isolation.ts`, `bun e2e/fase1-api.ts`, `bun e2e/recibo.ts` e
-`bun e2e/demo-mode.ts`, `bun e2e/sem-consumo.ts`. As suítes Python históricas ainda dependem do fluxo
-anterior sem login e precisam ser adaptadas ao acesso por PIN antes de voltar ao gate.
+Validações principais: `bun e2e/monetario.ts`, `bun e2e/security-regressao.ts`,
+`bun e2e/tenant-isolation.ts`, `bun e2e/fase1-api.ts`, `bun e2e/bootstrap-seguro.ts`,
+`bun e2e/limpeza-operacional.ts`, `bun e2e/recibo.ts` e `bun e2e/sem-consumo.ts`.
 
 ## Perfis
 
@@ -35,7 +34,7 @@ também nas gravações, não apenas na navegação.
 | Perfil | Abre em | Enxerga | Não faz |
 |--------|---------|---------|---------|
 | Gerência | Salão | tudo: salão, valores, produção, caixa, fechamentos, configuração | — |
-| Rafael (garçom) | Mesas do turno | mesas do turno, comanda, lançamento, entrega | faturamento, configuração, caixa, NFC-e |
+| Garçom | Mesas do turno | mesas do turno, comanda, lançamento, entrega | faturamento, configuração, caixa, NFC-e |
 | Cozinha e bar | Produção | fichas por destino, sem valores | cardápio, configuração |
 | Caixa | Fila de fechamento | divisão por pessoa, taxa de serviço, notinha simples | lançar item, configuração |
 
@@ -43,35 +42,13 @@ também nas gravações, não apenas na navegação.
 
 | Rota | Tela | O que mostra |
 |------|------|--------------|
-| `/` | Salão | Dez mesas com estado (livre, ocupada, aguardando conta) e indicadores do turno. |
+| `/` | Salão | Mesas configuradas com estado (livre, ocupada, aguardando conta) e indicadores do turno. |
 | `/garcom` | Mesas do turno | A visão do garçom no celular: as mesas dele, estado e total de cada uma. |
 | `/mesa/:id` | Comanda | Pessoas da mesa, itens individuais e compartilhados, autor e hora de cada item, envio do pedido, entrega, pedido de cancelamento, solicitação de fechamento e **encerramento sem consumo** quando a mesa está vazia. |
 | `/producao` | Cozinha e bar | Fichas separadas por destino, com mesa, pessoa, garçom, observação e avanço de estado. |
 | `/caixa` | Caixa | Fila das mesas que pediram a conta, divisão por pessoa, taxa de serviço e impressão da notinha. |
-| `/fechamentos` | Contas fechadas | Histórico da sessão, com a divisão de cada pessoa, quem operou o caixa e qual garçom atendeu, e a auditoria das **mesas liberadas sem consumo**. |
-| `/configuracao` | Ajustes | Pontos a confirmar no diagnóstico presencial, o que fica fora do piloto e o botão de reiniciar. |
-
-Mesas **02, 06 e 08** já têm comanda aberta. As outras abrem em branco, para mostrar o início do atendimento.
-
-## Roteiro da reunião
-
-O painel lateral **Roteiro** traz os 14 passos em ordem. Ele avança à mão (Próximo / Anterior) e também marca
-sozinho quando a ação acontece de verdade na tela. Dá para sair dele a qualquer momento: ele orienta, não bloqueia.
-
-1. **Salão** — dez mesas e o estado de cada uma em uma tela.
-2. **Trocar para Rafael (garçom)** — a tela muda para as mesas do turno dele.
-3. **Mesa 08** — Fábio, Ana, Bruno e Carol na mesma mesa.
-4. **Lançar para Ana** — escolher a pessoa antes do item é o ponto central da proposta.
-5. **Lançar um compartilhado com observação** — "PORÇÃO MISTA", sem cebola.
-6. **Revisar e enviar** — o garçom confere antes de mandar para a produção.
-7. **Cozinha e bar** — a ficha chega separada por destino, com mesa, pessoa e garçom; avançar até "pronto".
-8. **Entregar na mesa** — o garçom vê "pronto" e confirma a entrega.
-9. **Pedir a conta** — a mesa entra na fila do caixa.
-10. **Caixa** — divisão por pessoa, com a fração dos compartilhados; retirar e recolocar os 10% de serviço.
-11. **Imprimir notinha** — mostrar o resumo sem valor fiscal em 58 ou 80 mm.
-12. **Fechamentos** — o registro da conta, com o garçom que atendeu.
-13. **Configuração** — usar a lista de pontos a confirmar como pauta das perguntas ao dono.
-14. **Reiniciar demonstração** — disponível somente quando `CAV_DEMO_MODE=true`.
+| `/fechamentos` | Contas fechadas | Histórico persistido, com a divisão de cada pessoa, autoria do caixa e auditoria das **mesas liberadas sem consumo**. |
+| `/configuracao` | Ajustes | Mesas, cardápio, equipe, PIN pessoal e preferências de tela. |
 
 ## Correções da V2.1
 
@@ -88,8 +65,7 @@ identidade visual:
    maior resto com desempate estável; a soma das parcelas é sempre igual ao valor original.
 5. **Duplo clique bloqueado** — `useAcaoUnica()` em Enviar pedido, Solicitar fechamento, Confirmar
    fechamento, Entreguei (por linha) e avanço de ficha.
-6. **Selo "Made with Runable" sempre visível** — o espaçamento da barra inferior respeita o selo e o
-   `safe-area-inset-bottom`; nada é escondido por CSS, JS ou sobreposição.
+6. **Navegação mobile estável** — a barra inferior respeita `safe-area-inset-bottom` sem cobrir ações.
 7. **Contadores consistentes** — todos derivam do mesmo estado central e mudam no mesmo instante.
 
 ## Encerramento de mesa sem consumo
@@ -114,8 +90,8 @@ e não existe item enviado, aparece a ação secundária **Encerrar sem consumo*
 
 ## Limitações conhecidas
 
-- **Os quatro PINs de bootstrap devem ser definidos no ambiente.** Em desenvolvimento/testes, os padrões são
-  `1111`, `2222`, `3333` e `4444`; em produção os quatro `CAV_BOOTSTRAP_PIN_*` são obrigatórios.
+- **O PIN de bootstrap da gerência deve ser definido no ambiente** em `CAV_BOOTSTRAP_PIN_GERENCIA` e não pode
+  ser sequencial ou repetido.
 - **Frontend e API em origens diferentes exigem allowlist.** Defina `CAV_ALLOWED_ORIGINS` com origens
   completas separadas por vírgula. A própria origem é aceita automaticamente.
 - **Não existe desconto no sistema.** A aritmética de valor negativo já é tratada em `ratear()`, mas o
@@ -132,14 +108,6 @@ e não existe item enviado, aparece a ação secundária **Encerrar sem consumo*
 - **Cancelar item em produção exige autorização.** O garçom pede, a gerência autoriza ou recusa.
 - **Envio à prova de duplo clique.** O botão trava e o provedor tem guarda de idempotência: item não duplica.
 - **Autoria e hora em todo item.** A comanda e a ficha mostram quem lançou e quando.
-
-## Avisos permanentes na interface
-
-- **Dados sincronizados** — o estado operacional é persistido e isolado por organização.
-- **Cardápio provisório** — os itens serão substituídos pelo cardápio real.
-- **Integração fiscal prevista** — a NFC-e é simulação de interface.
-- **Acesso por PIN** — cada funcionário tem PIN individual e permissões de perfil.
-- **Brasão provisório** — o símbolo atual é marcador, não o logotipo final.
 
 ## Documentação
 
@@ -162,12 +130,12 @@ Front/                      mapa e limites do frontend
 packages/web/src/api/       Hono, oRPC, Drizzle, autenticação e persistência
 packages/web/src/web/
   pages/          Salão, Garçom, Comanda, Cozinha e bar, Caixa, Fechamentos, Configuração
-  components/     app-shell, provedor de estado, cardápio, divisão da conta, painel do roteiro
-  lib/            tipos, dados demonstrativos, perfis, roteiro, rateio, formatação
+  components/     app-shell, provedor de estado, cardápio e divisão da conta
+  lib/            tipos, operação, perfis, rateio e formatação
   styles.css      tokens de cor, materiais, animações
   fonts.css       fontes auto-hospedadas (Oswald, Manrope, Cinzel)
 public/fonts/     arquivos .woff2
 ```
 
 O monorepo também traz os pacotes `mobile` (Expo) e `desktop` (Electron) do template. Eles não foram usados
-nesta demonstração; ela é web.
+no fluxo web atual.

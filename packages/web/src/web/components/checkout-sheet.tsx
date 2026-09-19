@@ -1,19 +1,18 @@
 // Dialogo do caixa: divisao por pessoa, controle da taxa de servico e impressao da notinha.
-// O pagamento continua externo e a integracao fiscal permanece fora desta fase.
 // A conta e sempre dividida por pessoa e cada um paga a parte dele na forma que quiser —
 // a maquininha continua sendo a de hoje, fora do sistema.
 
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { CheckCircle2, Circle, Info, Printer } from "lucide-react";
-import { TAXA_SERVICO } from "../lib/demo-data";
+import { TAXA_SERVICO } from "../lib/operacao";
 import { mesaLabel, money } from "../lib/format";
 import { useAcaoUnica } from "../lib/hooks";
 import { imprimirRecibo, montarRecibo } from "../lib/recibo";
 import { useComanda } from "./comanda-provider";
 import { Action } from "./ui/action";
 import { Sheet } from "./ui/sheet";
-import { DemoTag, RuneDivider } from "./ui/pieces";
+import { RuneDivider } from "./ui/pieces";
 
 export function CheckoutSheet({
   open,
@@ -34,7 +33,6 @@ export function CheckoutSheet({
     notificar,
     pessoasDaMesa,
     larguraRecibo,
-    registrarEvento,
   } = useComanda();
   const [pagos, setPagos] = useState<string[]>([]);
   // Um fechamento por clique: o duplo clique nao gera dois registros (lib/hooks.ts).
@@ -71,7 +69,6 @@ export function CheckoutSheet({
         ),
         larguraRecibo,
       );
-      registrarEvento("notinha-impressa");
       notificar("Notinha enviada para a janela de impressão.", "sucesso");
     } catch (erro) {
       notificar(erro instanceof Error ? erro.message : "Não foi possível imprimir.", "atencao");
@@ -256,10 +253,9 @@ export function CheckoutSheet({
             Recibo simples
           </p>
           <p className="text-muted mt-1 text-[12px] leading-relaxed">
-            A notinha é um resumo de consumo sem valor fiscal. A impressão usa a impressora
-            configurada no sistema operacional; emissão de NFC-e continua fora desta fase.
+            A notinha é um resumo do consumo. A impressão usa a impressora configurada no sistema
+            operacional.
           </p>
-          <DemoTag className="mt-2.5">Sem valor fiscal</DemoTag>
         </div>
       </div>
 

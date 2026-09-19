@@ -1,7 +1,7 @@
 # CAV Comanda | Valhalla — Design
 
-Sistema demonstrativo de comandas por mesa e por pessoa para a **Valhalla Choperia** (Três Lagoas/MS).
-Plataforma: web (navegador, usada em celular, tablet e computador). Sem backend real, sem banco, sem emissão fiscal.
+Sistema de comandas por mesa e por pessoa para a **Valhalla Choperia** (Três Lagoas/MS).
+Plataforma: web (navegador, usada em celular, tablet e computador), conectada à API e ao banco da organização.
 
 Direção visual: choperia temática premium. Base quase preta e madeira escura, destaques em dourado envelhecido,
 bronze e laranja queimado, textos de apoio em pergaminho. Atmosfera nórdica e artesanal expressa em **materiais,
@@ -50,7 +50,7 @@ Contraste: texto principal sobre fundo escuro ≈ 12:1; texto de apoio ≈ 5:1; 
 ## Typography
 
 Auto-hospedada em `packages/web/public/fonts/` (Google Fonts, SIL OFL 1.1) e declarada em `src/web/fonts.css`.
-A demonstração roda sem internet.
+As fontes são auto-hospedadas para a interface não depender de rede externa.
 
 - **Cinzel 700** — exclusivamente no lockup da marca (VALHALLA). Serifa gravada, remete ao brasão dos cartazes.
 - **Oswald 500/600/700** — títulos, números de mesa, totais, rótulos de estado. Condensada, de cartaz, ótima
@@ -66,8 +66,7 @@ Escala: 11/12/13 px apoio · 15/16 px corpo · 20/24 px títulos de seção · 3
 - **Grão de filme**: `feTurbulence` em SVG inline (data URI) a 3–4% de opacidade sobre o fundo.
 - **Cantoneiras de metal**: pseudo-elementos com fios em dourado nos quatro cantos do painel de destaque.
 - **Divisor rúnico**: um único losango entre dois fios de bronze, usado com parcimônia em cabeçalhos.
-- **Brasão provisório** (`brand-mark.tsx`): SVG autoral (elmo + machados + fio circular) marcado como provisório;
-  ponto de substituição documentado para o logotipo oficial em alta resolução.
+- **Emblema da marca** (`brand-mark.tsx`): SVG autoral com elmo, machados e fio circular.
 
 ## Componentes
 
@@ -78,22 +77,22 @@ Escala: 11/12/13 px apoio · 15/16 px corpo · 20/24 px títulos de seção · 3
 - `guest-chips` — filtro por pessoa (Todos, Fábio, Ana, Bruno, Carol, Compartilhado).
 - `production-ticket` — ficha de cozinha/bar legível a distância: mesa em 40 px, itens em 18 px.
 - `sheet` — diálogo nativo (`<dialog>`) centralizado no desktop e ancorado ao rodapé no celular.
-- `status-pill`, `rune-divider`, `section-heading`, `demo-tag`, `toast`.
+- `status-pill`, `rune-divider`, `section-heading`, `metric`, `toast`.
 
 ## Páginas
 
-- **Salão** (`pages/index.tsx`) — impacto de abertura + visão operacional: faixa de indicadores, 10 mesas, legenda.
-- **Mesa** (`pages/mesa.tsx`) — comanda da Mesa 08: pessoas, itens individuais e compartilhados, envio, resumo.
+- **Salão** (`pages/index.tsx`) — visão operacional: indicadores, mesas configuradas, fila do caixa e legenda.
+- **Mesa** (`pages/mesa.tsx`) — comanda da mesa: pessoas, itens individuais e compartilhados, envio, resumo.
 - **Cozinha e bar** (`pages/producao.tsx`) — fila separada por destino, avanço de estado por ficha.
-- **Fechamentos** (`pages/fechamentos.tsx`) — contas encerradas na demonstração, com rateio registrado.
-- **Configuração** (`pages/configuracao.tsx`) — o que será confirmado no diagnóstico presencial.
+- **Fechamentos** (`pages/fechamentos.tsx`) — contas encerradas, com rateio e auditoria registrados.
+- **Configuração** (`pages/configuracao.tsx`) — mesas, cardápio, equipe, PIN pessoal e preferências.
 
 ## Fluxos
 
-1. Salão → Mesa 08 → adicionar item para Ana → enviar para cozinha e bar → ficha aparece na produção.
+1. Salão → abrir uma mesa → adicionar item para uma pessoa → enviar para cozinha e bar → ficha aparece na produção.
 2. Produção → avançar estado (enviado → preparando → pronto) → o estado volta para a comanda.
-3. Mesa 08 → dividir e fechar conta → rateio por pessoa com ¼ dos compartilhados e serviço → simular NFC-e.
-4. Fechamento simulado é registrado em Fechamentos.
+3. Mesa → dividir e fechar conta → rateio por pessoa com compartilhados e serviço → imprimir recibo.
+4. Fechamento é registrado em Fechamentos.
 5. Tema claro/escuro em qualquer tela, persistido apenas na sessão (sem `localStorage`).
 
 ## Acessibilidade e desempenho
@@ -112,7 +111,7 @@ genérico, sem raio de canto exagerado (máximo 12 px, 999 px apenas em chips), 
 colorido, sem texto gigante decorativo, sem imagem de viking gerada por IA, sem excesso de runas, sem cara de
 template SaaS.
 
-## Provisório e declarado na interface
+## Estado da operação
 
-"Dados demonstrativos", "Cardápio provisório", "Integração fiscal prevista" e "Brasão provisório" aparecem como
-rótulos permanentes na interface — nada simulado é apresentado como recurso concluído.
+Dados, cardápio, equipe, mesas e fechamentos exibidos na interface vêm da organização autenticada e são
+persistidos pelo backend. Recursos fiscais e pagamentos integrados dependem de infraestrutura externa.

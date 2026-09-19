@@ -5,7 +5,7 @@ import { DoorClosed, FileCheck2, ReceiptText } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
-import { DemoTag, Metric, SectionHeading, StatusPill } from "../components/ui/pieces";
+import { Metric, SectionHeading, StatusPill } from "../components/ui/pieces";
 import {
   duracao,
   hora,
@@ -14,7 +14,6 @@ import {
   motivoSemConsumoLabel,
   perfilNome,
 } from "../lib/format";
-import { MESA_DEMO } from "../lib/demo-data";
 
 export default function FechamentosPage() {
   const [, navegar] = useLocation();
@@ -28,8 +27,7 @@ export default function FechamentosPage() {
       <SectionHeading
         eyebrow="Caixa"
         title="Contas fechadas"
-        hint="Na versão final esta tela vira o histórico do dia, com filtro por período e por mesa."
-        action={<DemoTag>Dados sincronizados</DemoTag>}
+        hint="Histórico persistido da organização, com divisão por pessoa e valores registrados."
       />
 
       {fechamentos.length ? (
@@ -72,7 +70,7 @@ export default function FechamentosPage() {
                     </div>
                   </div>
                   <StatusPill
-                    label="Recibo simples · sem valor fiscal"
+                    label="Recibo operacional"
                     color="var(--vh-bronze)"
                   />
                   <p className="font-display vh-tabular text-gold-bright text-[22px] tracking-[0.03em]">
@@ -118,8 +116,7 @@ export default function FechamentosPage() {
           </ul>
 
           <p className="text-muted mt-5 text-[12px] leading-relaxed">
-            Integração fiscal prevista: nenhum documento fiscal foi emitido e nenhum valor foi
-            cobrado. Os registros existem apenas nesta sessão do navegador.
+            Os fechamentos e seus valores permanecem registrados para a organização autenticada.
           </p>
         </>
       ) : encerramentosSemConsumo.length ? null : (
@@ -135,14 +132,11 @@ export default function FechamentosPage() {
           </h2>
           <p className="text-muted mx-auto mt-3 max-w-md text-[13px] leading-relaxed">
             O garçom solicita o fechamento na comanda e o caixa divide a conta por pessoa. O
-            registro simulado aparece aqui com a divisão de cada um.
+            registro aparece aqui com a divisão de cada um.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             <Action variante="primaria" onClick={() => navegar("/caixa")}>
               Ir para o caixa
-            </Action>
-            <Action onClick={() => navegar(`/mesa/${MESA_DEMO}`)}>
-              Abrir Mesa {mesaLabel(MESA_DEMO)}
             </Action>
           </div>
         </section>
@@ -155,7 +149,7 @@ export default function FechamentosPage() {
             eyebrow="Auditoria"
             title="Mesas liberadas sem consumo"
             hint="Ocorrências sem cobrança, pagamento ou documento fiscal. Não entram no faturamento."
-            action={<DemoTag>{String(encerramentosSemConsumo.length)}</DemoTag>}
+            action={<span className="font-display text-muted text-[13px]">{encerramentosSemConsumo.length}</span>}
           />
           <ul className="grid gap-2">
             {encerramentosSemConsumo.map((registro) => (

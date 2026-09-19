@@ -1,5 +1,4 @@
-// Tema escuro (padrao) e claro (pergaminho). Sem localStorage: a preferencia vale para a sessao,
-// conforme a restricao da demonstracao.
+// Tema escuro (padrao) e claro (pergaminho). Sem localStorage: a preferencia vale para a sessao.
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 

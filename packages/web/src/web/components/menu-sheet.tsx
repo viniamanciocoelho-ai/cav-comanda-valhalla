@@ -3,14 +3,13 @@
 
 import { useMemo, useState } from "react";
 import { Beer, Minus, Plus, UserPlus, UtensilsCrossed } from "lucide-react";
-import { COMPARTILHADO, compartilhadoId } from "../lib/demo-data";
+import { COMPARTILHADO, compartilhadoId } from "../lib/operacao";
 import { destinoLabel, mesaLabel, money } from "../lib/format";
 import { MENU_CATEGORIAS } from "../lib/types";
 import type { MenuItem } from "../lib/types";
 import { useComanda } from "./comanda-provider";
 import { Action } from "./ui/action";
 import { Sheet } from "./ui/sheet";
-import { DemoTag } from "./ui/pieces";
 
 const categorias = ["Todos", ...MENU_CATEGORIAS] as const;
 
@@ -23,8 +22,7 @@ export function MenuSheet({
   onClose: () => void;
   mesa_id: number;
 }) {
-  const { pessoasDaMesa, adicionarPessoa, adicionarItem, notificar, registrarEvento, cardapio } =
-    useComanda();
+  const { pessoasDaMesa, adicionarPessoa, adicionarItem, notificar, cardapio } = useComanda();
   const pessoas = pessoasDaMesa(mesa_id);
   const compartilhado = compartilhadoId(mesa_id);
 
@@ -51,12 +49,6 @@ export function MenuSheet({
 
   function selecionar(pessoa_id: string) {
     setPara(pessoa_id);
-    if (pessoa_id === compartilhado) {
-      registrarEvento("compartilhado-selecionado");
-      return;
-    }
-    const nome = pessoas.find((p) => p.pessoa_id === pessoa_id)?.nome.trim().toLowerCase();
-    if (nome === "ana") registrarEvento("ana-selecionada");
   }
 
   function criarPessoa() {
@@ -254,8 +246,6 @@ export function MenuSheet({
           })}
         </div>
       </fieldset>
-
-      <DemoTag className="mb-3">Cardápio provisório</DemoTag>
 
       <ul className="divide-line divide-y">
         {itens.map((item) => (

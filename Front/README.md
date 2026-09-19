@@ -21,7 +21,7 @@ briefing visual permanece em `design.md`.
 - Não altere schema, migrations, autenticação ou cálculo financeiro durante
   refinamentos exclusivamente visuais.
 - Mantenha responsividade, foco visível, contraste e controles acessíveis.
-- Dados fictícios só podem aparecer quando o modo demo estiver ativo.
+- A interface não deve criar dados fictícios; a operação exibida vem da organização autenticada.
 
 ## Validação
 

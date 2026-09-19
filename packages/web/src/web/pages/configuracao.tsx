@@ -1,69 +1,69 @@
-// O que ainda depende de decisao ou levantamento no local. Tela honesta de escopo.
+// Configuracao operacional da organizacao autenticada.
 
 import { useState } from "react";
-import {
-  ChefHat,
-  FileCheck2,
-  MonitorSmartphone,
-  Printer,
-  Save,
-  Users,
-  UtensilsCrossed,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { KeyRound, Moon, Save, Sun, UserPlus, Users } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
-import { DemoTag, RuneDivider, SectionHeading, StatusPill } from "../components/ui/pieces";
+import { SectionHeading, StatusPill } from "../components/ui/pieces";
 import { useTema } from "../components/theme-provider";
-import { configuracaoPrevista } from "../lib/demo-data";
 import { MENU_CATEGORIAS } from "../lib/types";
-import type { Destino, MenuItem, Perfil } from "../lib/types";
+import type { Destino, Perfil, ProdutoConfiguracao } from "../lib/types";
 
-const icones: Record<string, LucideIcon> = {
-  "monitor-smartphone": MonitorSmartphone,
-  printer: Printer,
-  "file-check-2": FileCheck2,
-  utensils: UtensilsCrossed,
-  "chef-hat": ChefHat,
-  users: Users,
-};
-
-const naoIncluido = [
-  "Emissão real de NFC-e (prevista, depende de credenciais e homologação)",
-  "Pagamento dentro do sistema (maquininha segue como está hoje)",
-  "Controle de estoque e ficha técnica",
-  "Aplicativo para o cliente pedir sozinho",
-  "Integração com delivery e marketplaces",
+const perfis: { value: Perfil; label: string }[] = [
+  { value: "garcom", label: "Garçom" },
+  { value: "caixa", label: "Caixa" },
+  { value: "producao", label: "Cozinha e bar" },
+  { value: "gerencia", label: "Gerência" },
 ];
+
+function idDe(texto: string) {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function campoProduto(produto?: ProdutoConfiguracao) {
+  return {
+    nome: produto?.name ?? "",
+    preco: produto ? String(produto.price).replace(".", ",") : "",
+    categoria: produto?.categoria ?? MENU_CATEGORIAS[0],
+    destino: produto?.destino_producao ?? ("bar" as Destino),
+    ativo: produto?.ativo ?? true,
+  };
+}
 
 export default function ConfiguracaoPage() {
   const { tema, alternarTema } = useTema();
   const {
-    reiniciarDemonstracao,
+    funcionarioAtivo,
     quantidadeMesas,
     larguraRecibo,
-    cardapio,
+    produtos,
     funcionarios,
-    modoDemo,
     configurarOperacao,
     salvarProduto,
     salvarFuncionario,
+    alterarPin,
     notificar,
   } = useComanda();
+
   const [mesas, setMesas] = useState(String(quantidadeMesas));
   const [largura, setLargura] = useState<58 | 80>(larguraRecibo);
-  const [produto, setProduto] = useState({
-    nome: "",
-    preco: "",
-    categoria: MENU_CATEGORIAS[0],
-    destino: "bar" as Destino,
-  });
+  const [produtoId, setProdutoId] = useState("");
+  const [produto, setProduto] = useState(campoProduto());
+  const [funcionarioId, setFuncionarioId] = useState("");
   const [funcionario, setFuncionario] = useState({
     nome: "",
     pin: "",
     perfil: "garcom" as Perfil,
+    ativo: true,
   });
+  const [pinAtual, setPinAtual] = useState("");
+  const [pinNovo, setPinNovo] = useState("");
   const [salvando, setSalvando] = useState(false);
 
   async function executar(tarefa: () => Promise<void>, sucesso: string) {
@@ -78,65 +78,44 @@ export default function ConfiguracaoPage() {
     }
   }
 
-  function idDe(texto: string) {
-    return texto
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
+  function selecionarProduto(id: string) {
+    setProdutoId(id);
+    setProduto(campoProduto(produtos.find((item) => item.produto_id === id)));
+  }
+
+  function selecionarFuncionario(id: string) {
+    setFuncionarioId(id);
+    const selecionado = funcionarios.find((item) => item.funcionario_id === id);
+    setFuncionario(
+      selecionado
+        ? {
+            nome: selecionado.funcionario_nome,
+            pin: "",
+            perfil: selecionado.funcionario_perfil,
+            ativo: selecionado.ativo !== false,
+          }
+        : { nome: "", pin: "", perfil: "garcom", ativo: true },
+    );
   }
 
   return (
     <AppShell
       titulo="Configuração"
-      subtitulo="O que já está definido e o que ainda será levantado na Valhalla"
+      subtitulo="Mesas, cardápio, equipe e credenciais da operação"
     >
-      <SectionHeading
-        eyebrow="Escopo"
-        title="Pontos a confirmar"
-        hint="Preferimos deixar visível o que depende de decisão de vocês em vez de prometer pronto."
-        action={<DemoTag>Integração fiscal prevista</DemoTag>}
-      />
-
-      <ul className="grid gap-3 lg:grid-cols-2">
-        {configuracaoPrevista.map((item) => {
-          const Icone = icones[item.icone] ?? MonitorSmartphone;
-          const cor = item.tipo === "atencao" ? "var(--vh-ember)" : "var(--vh-moss)";
-          return (
-            <li
-              key={item.titulo}
-              className="border-line bg-surface flex gap-3.5 rounded-md border p-4"
-              data-testid={`config-${item.titulo}`}
-            >
-              <span
-                className="border-line bg-surface-2 text-gold grid size-11 shrink-0 place-items-center rounded-md border"
-                aria-hidden="true"
-              >
-                <Icone className="size-[18px]" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <h3 className="text-parchment text-[15px] tracking-[0.06em]">{item.titulo}</h3>
-                  <StatusPill label={item.estado} color={cor} />
-                </div>
-                <p className="text-muted text-[13px] leading-relaxed">{item.texto}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-
-      <RuneDivider className="my-8" />
-
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="border-line bg-surface rounded-md border p-5">
-          <h2 className="text-parchment text-[17px] tracking-[0.06em]">Operação</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <SectionHeading
+            eyebrow="Operação"
+            title="Parâmetros do salão"
+            hint="A configuração é salva para a organização autenticada."
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-muted text-[12px]">
               Quantidade de mesas
               <input
                 type="number"
+                aria-label="Quantidade de mesas"
                 min={1}
                 max={200}
                 value={mesas}
@@ -145,7 +124,7 @@ export default function ConfiguracaoPage() {
               />
             </label>
             <label className="text-muted text-[12px]">
-              Largura da notinha
+              Largura do recibo
               <select
                 value={largura}
                 onChange={(evento) => setLargura(Number(evento.target.value) === 58 ? 58 : 80)}
@@ -173,34 +152,59 @@ export default function ConfiguracaoPage() {
         </section>
 
         <section className="border-line bg-surface rounded-md border p-5">
-          <h2 className="text-parchment text-[17px] tracking-[0.06em]">Fora do piloto</h2>
-          <p className="text-muted mt-1.5 text-[13px] leading-relaxed">
-            Itens que não entram nesta primeira etapa. Podem ser avaliados depois, com o sistema já
-            rodando no salão.
-          </p>
-          <ul className="mt-4 grid gap-2">
-            {naoIncluido.map((texto) => (
-              <li key={texto} className="text-muted flex gap-2.5 text-[13px] leading-relaxed">
-                <span className="border-bronze mt-[7px] size-1.5 shrink-0 rotate-45 border" aria-hidden="true" />
-                {texto}
-              </li>
-            ))}
-          </ul>
+          <SectionHeading
+            eyebrow="Preferências"
+            title="Aparência da tela"
+            hint="A escolha fica vinculada à sessão atual deste dispositivo."
+          />
+          <Action onClick={alternarTema}>
+            {tema === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            {tema === "dark" ? "Usar tema claro" : "Usar tema escuro"}
+          </Action>
         </section>
 
         <section className="border-line bg-surface rounded-md border p-5">
-          <h2 className="text-parchment text-[17px] tracking-[0.06em]">Cardápio</h2>
-          <p className="text-muted mt-1 text-[12px]">{cardapio.length} itens ativos</p>
+          <SectionHeading
+            eyebrow="Cardápio"
+            title="Produtos"
+            hint={`${produtos.filter((item) => item.ativo).length} ativos · ${produtos.length} cadastrados`}
+            action={
+              <Action
+                variante="fantasma"
+                onClick={() => {
+                  selecionarProduto("");
+                }}
+              >
+                <Save className="size-4" />
+                Novo produto
+              </Action>
+            }
+          />
+          <label className="text-muted block text-[12px]">
+            Produto selecionado
+            <select
+              value={produtoId}
+              onChange={(evento) => selecionarProduto(evento.target.value)}
+              className="border-line bg-surface-2 text-parchment mt-2 min-h-11 w-full rounded-md border px-3 text-[14px]"
+            >
+              <option value="">Novo produto</option>
+              {produtos.map((item) => (
+                <option key={item.produto_id} value={item.produto_id}>
+                  {item.name} {item.ativo ? "" : "(inativo)"}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <input
-              aria-label="Nome do item"
-              placeholder="Nome do item"
+              aria-label="Nome do produto"
+              placeholder="Nome do produto"
               value={produto.nome}
               onChange={(evento) => setProduto((atual) => ({ ...atual, nome: evento.target.value }))}
               className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
             />
             <input
-              aria-label="Preço do item"
+              aria-label="Preço do produto"
               placeholder="Preço"
               inputMode="decimal"
               value={produto.preco}
@@ -208,12 +212,12 @@ export default function ConfiguracaoPage() {
               className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
             />
             <select
-              aria-label="Categoria do item"
+              aria-label="Categoria do produto"
               value={produto.categoria}
               onChange={(evento) =>
                 setProduto((atual) => ({
                   ...atual,
-                  categoria: evento.target.value as MenuItem["categoria"],
+                  categoria: evento.target.value as ProdutoConfiguracao["categoria"],
                 }))
               }
               className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
@@ -234,7 +238,17 @@ export default function ConfiguracaoPage() {
               <option value="cozinha">Cozinha</option>
             </select>
           </div>
+          <label className="text-muted mt-3 flex min-h-11 items-center gap-2 text-[12px]">
+            <input
+              type="checkbox"
+              aria-label="Produto disponível para lançamento"
+              checked={produto.ativo}
+              onChange={(evento) => setProduto((atual) => ({ ...atual, ativo: evento.target.checked }))}
+            />
+            Produto disponível para lançamento
+          </label>
           <Action
+            variante="primaria"
             className="mt-4"
             disabled={salvando}
             onClick={() =>
@@ -244,24 +258,54 @@ export default function ConfiguracaoPage() {
                   throw new Error("Informe nome e preço válidos.");
                 }
                 await salvarProduto({
-                  produto_id: `cad-${idDe(produto.nome)}`,
+                  produto_id: produtoId || `produto-${idDe(produto.nome)}`,
                   name: produto.nome.trim(),
                   price: preco,
                   categoria: produto.categoria,
                   destino_producao: produto.destino,
+                  ativo: produto.ativo,
                 });
-                setProduto((atual) => ({ ...atual, nome: "", preco: "" }));
-              }, "Item do cardápio salvo.")
+              }, "Produto salvo.")
             }
           >
             <Save className="size-4" />
-            Salvar item
+            Salvar produto
           </Action>
         </section>
 
         <section className="border-line bg-surface rounded-md border p-5">
-          <h2 className="text-parchment text-[17px] tracking-[0.06em]">Equipe e acessos</h2>
-          <p className="text-muted mt-1 text-[12px]">{funcionarios.length} funcionários ativos</p>
+          <SectionHeading
+            eyebrow="Equipe"
+            title="Acessos"
+            hint={`${funcionarios.filter((item) => item.ativo !== false).length} ativos · PIN individual por funcionário`}
+            action={
+              <Action
+                variante="fantasma"
+                onClick={() => {
+                  selecionarFuncionario("");
+                }}
+              >
+                <UserPlus className="size-4" />
+                Novo funcionário
+              </Action>
+            }
+          />
+          <label className="text-muted block text-[12px]">
+            Funcionário selecionado
+            <select
+              value={funcionarioId}
+              onChange={(evento) => selecionarFuncionario(evento.target.value)}
+              className="border-line bg-surface-2 text-parchment mt-2 min-h-11 w-full rounded-md border px-3 text-[14px]"
+            >
+              <option value="">Novo funcionário</option>
+              {funcionarios.map((item) => (
+                <option key={item.funcionario_id} value={item.funcionario_id}>
+                  {item.funcionario_nome} · {item.funcionario_perfil}
+                  {item.ativo === false ? " (inativo)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <input
               aria-label="Nome do funcionário"
@@ -274,7 +318,7 @@ export default function ConfiguracaoPage() {
             />
             <input
               aria-label="PIN do funcionário"
-              placeholder="PIN de 4 dígitos"
+              placeholder={funcionarioId ? "Novo PIN (opcional)" : "PIN de 4 dígitos"}
               inputMode="numeric"
               type="password"
               maxLength={4}
@@ -291,34 +335,45 @@ export default function ConfiguracaoPage() {
               aria-label="Perfil do funcionário"
               value={funcionario.perfil}
               onChange={(evento) =>
-                setFuncionario((atual) => ({
-                  ...atual,
-                  perfil: evento.target.value as Perfil,
-                }))
+                setFuncionario((atual) => ({ ...atual, perfil: evento.target.value as Perfil }))
               }
               className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px] sm:col-span-2"
             >
-              <option value="garcom">Garçom</option>
-              <option value="caixa">Caixa</option>
-              <option value="producao">Cozinha e bar</option>
-              <option value="gerencia">Gerência</option>
+              {perfis.map((perfil) => (
+                <option key={perfil.value} value={perfil.value}>
+                  {perfil.label}
+                </option>
+              ))}
             </select>
           </div>
+          <label className="text-muted mt-3 flex min-h-11 items-center gap-2 text-[12px]">
+            <input
+              type="checkbox"
+              aria-label="Funcionário ativo"
+              checked={funcionario.ativo}
+              onChange={(evento) =>
+                setFuncionario((atual) => ({ ...atual, ativo: evento.target.checked }))
+              }
+            />
+            Funcionário ativo
+          </label>
           <Action
+            variante="primaria"
             className="mt-4"
             disabled={salvando}
             onClick={() =>
               void executar(async () => {
-                if (!funcionario.nome.trim() || !/^\d{4}$/.test(funcionario.pin)) {
-                  throw new Error("Informe nome e PIN de 4 dígitos.");
+                if (!funcionario.nome.trim()) throw new Error("Informe o nome do funcionário.");
+                if (!funcionarioId && !/^\d{4}$/.test(funcionario.pin)) {
+                  throw new Error("Um funcionário novo precisa de PIN de 4 dígitos.");
                 }
                 await salvarFuncionario({
-                  funcionarioId: `f-${idDe(funcionario.nome)}`,
+                  funcionarioId: funcionarioId || `funcionario-${idDe(funcionario.nome)}`,
                   nome: funcionario.nome.trim(),
                   perfil: funcionario.perfil,
-                  pin: funcionario.pin,
+                  ...(funcionario.pin ? { pin: funcionario.pin } : {}),
+                  ativo: funcionario.ativo,
                 });
-                setFuncionario((atual) => ({ ...atual, nome: "", pin: "" }));
               }, "Funcionário salvo.")
             }
           >
@@ -327,43 +382,58 @@ export default function ConfiguracaoPage() {
           </Action>
         </section>
 
-        <section className="border-line bg-surface rounded-md border p-5">
-          <h2 className="text-parchment text-[17px] tracking-[0.06em]">Preferências da tela</h2>
-          <p className="text-muted mt-1.5 text-[13px] leading-relaxed">
-            O tema claro serve para ambientes com muita luz. O escuro é o padrão, pensado para o
-            salão à noite. A escolha vale apenas para esta sessão.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Action onClick={alternarTema}>
-              {tema === "dark" ? "Usar tema claro" : "Usar tema escuro"}
-            </Action>
-            {modoDemo ? (
-              <Action
-                variante="tracejada"
-                onClick={reiniciarDemonstracao}
-                data-testid="reiniciar-demonstracao"
-              >
-                Reiniciar demonstração
-              </Action>
-            ) : null}
+        <section className="border-line bg-surface rounded-md border p-5 lg:col-span-2">
+          <SectionHeading
+            eyebrow="Segurança"
+            title="Meu PIN"
+            hint={`Alteração para ${funcionarioAtivo.funcionario_nome}. O PIN atual é exigido.`}
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              aria-label="PIN atual"
+              placeholder="PIN atual"
+              inputMode="numeric"
+              type="password"
+              maxLength={4}
+              value={pinAtual}
+              onChange={(evento) => setPinAtual(evento.target.value.replace(/\D/g, "").slice(0, 4))}
+              className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
+            />
+            <input
+              aria-label="Novo PIN"
+              placeholder="Novo PIN"
+              inputMode="numeric"
+              type="password"
+              maxLength={4}
+              value={pinNovo}
+              onChange={(evento) => setPinNovo(evento.target.value.replace(/\D/g, "").slice(0, 4))}
+              className="border-line bg-surface-2 text-parchment min-h-11 rounded-md border px-3 text-[14px]"
+            />
           </div>
-
-          <div className="border-bronze/50 bg-surface-2 mt-5 rounded-md border border-dashed p-3.5">
-            <p className="font-display text-parchment text-[12px] tracking-[0.14em] uppercase">
-              Brasão provisório
-            </p>
-            <p className="text-muted mt-1.5 text-[12px] leading-relaxed">
-              O símbolo usado nesta demonstração é um desenho provisório feito para a apresentação.
-              Com o logotipo oficial da Valhalla em arquivo, ele é substituído sem mudar o layout.
-            </p>
+          <Action
+            variante="primaria"
+            className="mt-4"
+            disabled={salvando}
+            onClick={() =>
+              void executar(async () => {
+                if (!/^\d{4}$/.test(pinAtual) || !/^\d{4}$/.test(pinNovo)) {
+                  throw new Error("Informe o PIN atual e o novo PIN com 4 dígitos.");
+                }
+                await alterarPin(pinAtual, pinNovo);
+                setPinAtual("");
+                setPinNovo("");
+              }, "PIN alterado.")
+            }
+          >
+            <KeyRound className="size-4" />
+            Alterar PIN
+          </Action>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <StatusPill label="PBKDF2" color="var(--vh-moss)" strong />
+            <StatusPill label="PIN individual" color="var(--vh-gold)" />
           </div>
         </section>
       </div>
-
-      <p className="text-muted mt-7 text-[12px] leading-relaxed">
-        Dados operacionais persistidos no banco e sincronizados entre dispositivos. NFC-e e
-        pagamento integrado continuam fora desta fase.
-      </p>
     </AppShell>
   );
 }

@@ -8,16 +8,15 @@ import { AppShell } from "../components/app-shell";
 import { CheckoutSheet } from "../components/checkout-sheet";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
-import { DemoTag, Metric, SectionHeading, StatusPill } from "../components/ui/pieces";
-import { TAXA_SERVICO } from "../lib/demo-data";
+import { Metric, SectionHeading, StatusPill } from "../components/ui/pieces";
+import { TAXA_SERVICO } from "../lib/operacao";
 import { desde, mesaLabel, mesaStatusColor, mesaStatusLabel, money } from "../lib/format";
 import type { CSSProperties } from "react";
 import type { Mesa } from "../lib/types";
 
 export default function CaixaPage() {
   const [, navegar] = useLocation();
-  const { mesas, filaCaixa, pessoasDaMesa, resumo, fechamentos, notificar, registrarEvento } =
-    useComanda();
+  const { mesas, filaCaixa, pessoasDaMesa, resumo, fechamentos, notificar } = useComanda();
   const [mesaAberta, setMesaAberta] = useState<number | null>(null);
 
   const abertas = mesas.filter((mesa) => mesa.ativa && !mesa.contaSolicitada);
@@ -29,13 +28,9 @@ export default function CaixaPage() {
 
   function abrirFechamento(mesa: Mesa) {
     if (!mesa.ativa) {
-      notificar(
-        `Mesa ${mesaLabel(mesa.mesa_id)} é uma mesa de apoio desta demonstração: ela não tem comanda detalhada para dividir.`,
-        "atencao",
-      );
+      notificar(`Mesa ${mesaLabel(mesa.mesa_id)} está livre.`, "atencao");
       return;
     }
-    registrarEvento("caixa-dividiu");
     setMesaAberta(mesa.mesa_id);
   }
 
@@ -84,7 +79,7 @@ export default function CaixaPage() {
                 {conta.itens} {conta.itens === 1 ? "item" : "itens"}
               </span>
             ) : (
-              <span>mesa de apoio · sem comanda detalhada</span>
+              <span>mesa sem consumo aberto</span>
             )}
           </p>
 
@@ -131,11 +126,6 @@ export default function CaixaPage() {
 
   return (
     <AppShell titulo="Caixa" subtitulo="Divisão por pessoa, taxa de serviço e encerramento">
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <DemoTag>Dados sincronizados</DemoTag>
-        <DemoTag>Integração fiscal prevista</DemoTag>
-      </div>
-
       <section className="border-line bg-surface mb-7 grid grid-cols-2 divide-y divide-[var(--vh-border)] overflow-hidden rounded-md border sm:grid-cols-4 sm:divide-y-0">
         <div className="border-line border-r">
           <Metric

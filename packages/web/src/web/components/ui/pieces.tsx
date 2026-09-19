@@ -1,4 +1,4 @@
-// Pecas visuais compartilhadas: selo de estado, cabecalho de secao, divisor e etiquetas.
+// Pecas visuais compartilhadas: selo de estado, cabecalho de secao, divisor e metricas.
 
 import type { ReactNode } from "react";
 
@@ -67,17 +67,6 @@ export function RuneDivider({ className = "" }: { className?: string }) {
       <span className="border-gold/70 size-1.5 rotate-45 border" />
       <span className="from-bronze/60 h-px flex-1 bg-gradient-to-l to-transparent" />
     </div>
-  );
-}
-
-/** Etiqueta permanente para conteudo provisorio ou simulado. */
-export function DemoTag({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return (
-    <span
-      className={`font-display border-bronze/45 text-muted inline-flex items-center gap-1.5 rounded-sm border border-dashed px-2 py-1 text-[12px] tracking-[0.16em] uppercase ${className}`}
-    >
-      {children}
-    </span>
   );
 }
 

@@ -1,7 +1,4 @@
-// BRASAO PROVISORIO — desenho autoral em SVG, criado apenas para a demonstracao.
-// PONTO DE SUBSTITUICAO: trocar este componente pelo logotipo oficial da Valhalla Choperia
-// em alta resolucao (SVG ou PNG com fundo transparente) fornecido pelo estabelecimento.
-// Enquanto isso, a interface mantem o rotulo "brasao provisorio" ao lado da marca.
+// Emblema vetorial da marca Valhalla.
 
 import { useId } from "react";
 
@@ -15,7 +12,7 @@ export function BrandMark({ className = "" }: { className?: string }) {
       aria-labelledby={tituloId}
       fill="none"
     >
-      <title id={tituloId}>Brasão provisório da Valhalla</title>
+      <title id={tituloId}>Emblema da Valhalla</title>
       {/* fio externo e interno do selo */}
       <circle cx="24" cy="24" r="22.2" stroke="currentColor" strokeOpacity="0.55" />
       <circle cx="24" cy="24" r="18.6" stroke="currentColor" strokeOpacity="0.9" />

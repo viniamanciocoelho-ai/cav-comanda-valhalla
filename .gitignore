@@ -76,7 +76,13 @@ ios
 android
 
 # scripts (local-only provisioning)
-scripts/
+/scripts/
 !packages/mobile/scripts/
 packages/mobile/scripts/*
 !packages/mobile/scripts/generate-ios-certs.py
+
+# package-manager residues not used by this Bun workspace
+packages/web/pnpm-lock.yaml
+packages/web/pnpm-workspace.yaml
+packages/desktop/pnpm-lock.yaml
+packages/desktop/pnpm-workspace.yaml

@@ -1,5 +1,4 @@
-// Estado operacional sincronizado com o backend. O modo demo apenas controla a carga
-// inicial ficticia; as operacoes autenticadas sao persistidas no banco.
+// Estado operacional sincronizado com o backend.
 //
 // Desenho: um objeto `Dados` com todas as entidades e um espelho em `ref` para leitura
 // sincrona. Toda acao le o estado atual, calcula o proximo e grava os dois de uma vez.
@@ -17,20 +16,11 @@ import {
 } from "react";
 import {
   COMPARTILHADO,
-  MESA_DEMO,
   TAXA_SERVICO,
-  cardapio,
   compartilhadoId,
   ehCompartilhado,
-  fechamentosIniciais,
-  itensIniciais,
-  mesasIniciais,
-  pessoasIniciais,
-  ticketsIniciais,
-} from "../lib/demo-data";
+} from "../lib/operacao";
 import { paraCentavos, paraReais, ratear } from "../lib/rateio";
-import { passosRoteiro } from "../lib/roteiro";
-import type { EventoRoteiro } from "../lib/roteiro";
 import { horaAgora } from "../lib/format";
 import { client } from "../lib/api";
 import { useSessao } from "./sessao-provider";
@@ -46,6 +36,7 @@ import type {
   OrderItem,
   Perfil,
   Pessoa,
+  ProdutoConfiguracao,
   ResumoMesa,
   Ticket,
   TicketStatus,
@@ -106,19 +97,21 @@ interface ComandaState {
   trocarPerfil: (funcionario_id: string) => Funcionario | null;
   sair: () => void;
   cardapio: MenuItem[];
+  produtos: ProdutoConfiguracao[];
   quantidadeMesas: number;
   larguraRecibo: 58 | 80;
   funcionarios: Funcionario[];
-  modoDemo: boolean;
   recarregarConfiguracao: () => Promise<void>;
   configurarOperacao: (quantidade: number, largura: 58 | 80) => Promise<void>;
-  salvarProduto: (produto: MenuItem) => Promise<void>;
+  salvarProduto: (produto: ProdutoConfiguracao) => Promise<void>;
   salvarFuncionario: (entrada: {
     funcionarioId: string;
     nome: string;
     perfil: Perfil;
-    pin: string;
+    pin?: string;
+    ativo: boolean;
   }) => Promise<void>;
+  alterarPin: (pinAtual: string, pinNovo: string) => Promise<void>;
 
   // dados
   mesas: Mesa[];
@@ -162,17 +155,9 @@ interface ComandaState {
   fecharConta: (mesa_id: number, nfceSimulada: boolean) => Fechamento | null;
   encerrarSemConsumo: (entrada: EntradaSemConsumo) => ResultadoSemConsumo;
   desfazerEncerramentoSemConsumo: (encerramento_id: string) => boolean;
-  reiniciarDemonstracao: () => void;
   notificar: (text: string, tone?: ToastMessage["tone"]) => void;
   descartarToast: (id: number) => void;
 
-  // roteiro demonstrativo
-  roteiroAberto: boolean;
-  alternarRoteiro: (valor?: boolean) => void;
-  passoAtual: number;
-  irParaPasso: (numero: number) => void;
-  concluidos: EventoRoteiro[];
-  registrarEvento: (evento: EventoRoteiro) => void;
 }
 
 const ComandaContext = createContext<ComandaState | null>(null);
@@ -199,20 +184,13 @@ const retorno: Record<TicketStatus, TicketStatus | null> = {
   entregue: null,
 };
 
-function estadoInicial(organizacaoId: string): Dados {
+function estadoInicial(): Dados {
   return {
-    mesas: mesasIniciais.map((m) => ({ ...m, organizacao_id: organizacaoId })),
-    pessoas: pessoasIniciais.map((p) => ({ ...p })),
-    itens: itensIniciais.map((i) => ({ ...i, organizacao_id: organizacaoId })),
-    tickets: ticketsIniciais.map((t) => ({
-      ...t,
-      organizacao_id: organizacaoId,
-      linhas: t.linhas.map((l) => ({ ...l })),
-    })),
-    fechamentos: fechamentosIniciais.map((f) => ({
-      ...f,
-      organizacao_id: organizacaoId,
-    })),
+    mesas: [],
+    pessoas: [],
+    itens: [],
+    tickets: [],
+    fechamentos: [],
     encerramentos: [],
     anteriores: {},
   };
@@ -344,15 +322,15 @@ function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
 export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const { sessao, sair } = useSessao();
   const organizacaoId = sessao!.organizacaoId;
-  const [dados, setDados] = useState<Dados>(() => estadoInicial(organizacaoId));
+  const [dados, setDados] = useState<Dados>(() => estadoInicial());
   const espelho = useRef<Dados>(dados);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [funcionarioAtivo] = useState<Funcionario>(sessao!.funcionario);
-  const [cardapioAtual, setCardapioAtual] = useState<MenuItem[]>(cardapio);
+  const [cardapioAtual, setCardapioAtual] = useState<MenuItem[]>([]);
+  const [produtosAtuais, setProdutosAtuais] = useState<ProdutoConfiguracao[]>([]);
   const [quantidadeMesas, setQuantidadeMesas] = useState(15);
   const [larguraRecibo, setLarguraRecibo] = useState<58 | 80>(80);
   const [funcionariosAtuais, setFuncionariosAtuais] = useState<Funcionario[]>([]);
-  const [modoDemo, setModoDemo] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const versao = useRef(0);
   const hidratado = useRef(false);
@@ -360,9 +338,6 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const epocaPersistencia = useRef(0);
   const filaPersistencia = useRef<Promise<void>>(Promise.resolve());
   const [enviandoMesa, setEnviandoMesa] = useState<number | null>(null);
-  const [roteiroAberto, setRoteiroAberto] = useState(false);
-  const [passoAtual, setPassoAtual] = useState(1);
-  const [concluidos, setConcluidos] = useState<EventoRoteiro[]>([]);
 
   // Sequencial para ids unicos, mesmo com dois lancamentos no mesmo milissegundo.
   const sequencia = useRef(0);
@@ -373,7 +348,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   // Encerramento sem consumo: trava de clique e guarda por abertura ja encerrada.
   const travaSemConsumo = useRef<Set<number>>(new Set());
   const aberturasEncerradas = useRef<Set<string>>(new Set());
-  // Estado da mesa antes do encerramento, para o "Desfazer" de 10 s da demonstracao.
+  // Estado da mesa antes do encerramento, para o desfazer de 10 s.
   const snapshotsSemConsumo = useRef<
     Map<string, { mesa: Mesa; pessoas: Pessoa[]; itens: OrderItem[] }>
   >(new Map());
@@ -389,7 +364,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     setQuantidadeMesas(remoto.configuracao.quantidadeMesas);
     setLarguraRecibo(remoto.configuracao.larguraRecibo === 58 ? 58 : 80);
     setFuncionariosAtuais(remoto.funcionarios);
-    setModoDemo(remoto.modoDemo);
+    setProdutosAtuais(remoto.produtos);
     hidratado.current = true;
     setCarregando(false);
   }, []);
@@ -469,26 +444,6 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
 
   const descartarToast = useCallback((id: number) => {
     setToasts((atual) => atual.filter((t) => t.id !== id));
-  }, []);
-
-  // ----------------------------------------------------------------- roteiro
-
-  const registrarEvento = useCallback((evento: EventoRoteiro) => {
-    setConcluidos((atual) => (atual.includes(evento) ? atual : [...atual, evento]));
-    setPassoAtual((atual) => {
-      const passo = passosRoteiro.find((p) => p.numero === atual);
-      // Marcacao automatica: se a acao do passo em foco aconteceu, o painel anda sozinho.
-      if (passo && passo.evento === evento) return Math.min(atual + 1, passosRoteiro.length);
-      return atual;
-    });
-  }, []);
-
-  const alternarRoteiro = useCallback((valor?: boolean) => {
-    setRoteiroAberto((atual) => valor ?? !atual);
-  }, []);
-
-  const irParaPasso = useCallback((numero: number) => {
-    setPassoAtual(Math.min(Math.max(numero, 1), passosRoteiro.length));
   }, []);
 
   // ----------------------------------------------------------------- perfis
@@ -695,20 +650,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         return { ...prev, itens: [...prev.itens, item] };
       }, "alterar_comanda");
 
-      // Passos do roteiro que dependem do item lancado. A deteccao usa o nome da pessoa
-      // (nao o id semeado), para funcionar tambem com pessoas criadas durante a reuniao.
-      const nomePessoa = espelho.current.pessoas
-        .find((p) => p.pessoa_id === pessoa_id)
-        ?.nome.trim()
-        .toLowerCase();
-      if (mesa_id === MESA_DEMO && produto.produto_id === "m2" && nomePessoa === "ana") {
-        registrarEvento("chopp-ipa-ana");
-      }
-      if (mesa_id === MESA_DEMO && produto.produto_id === "m12" && obs) {
-        registrarEvento("tabua-observacao");
-      }
     },
-    [aplicar, cardapioAtual, funcionarioAtivo, novoId, organizacaoId, registrarEvento],
+    [aplicar, cardapioAtual, funcionarioAtivo, novoId, organizacaoId],
   );
 
   const alterarQuantidade = useCallback(
@@ -870,10 +813,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         tickets: [...fichas, ...prev.tickets],
       }), "enviar_pedido");
 
-      if (mesa_id === MESA_DEMO) registrarEvento("pedido-enviado");
       return novos.reduce((soma, i) => soma + i.quantidade, 0);
     },
-    [aplicar, funcionarioAtivo, novoId, organizacaoId, registrarEvento],
+    [aplicar, funcionarioAtivo, novoId, organizacaoId],
   );
 
   /** Sincroniza a ficha e os itens da comanda vinculados a ela. */
@@ -915,9 +857,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       travaTicket.current.add(ticket_id);
       window.setTimeout(() => travaTicket.current.delete(ticket_id), 600);
       moverTicket(ticket_id, proximo);
-      if (ficha.mesa_id === MESA_DEMO) registrarEvento("producao-avancou");
     },
-    [funcionarioAtivo, moverTicket, registrarEvento],
+    [funcionarioAtivo, moverTicket],
   );
 
   const voltarTicket = useCallback(
@@ -963,10 +904,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         });
         return { ...prev, itens, tickets };
       }, "entregar_item");
-      const item = espelho.current.itens.find((i) => i.item_id === item_id);
-      if (item?.mesa_id === MESA_DEMO) registrarEvento("item-entregue");
     },
-    [aplicar, funcionarioAtivo, registrarEvento],
+    [aplicar, funcionarioAtivo],
   );
 
   const solicitarCancelamento = useCallback(
@@ -1100,10 +1039,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           m.mesa_id === mesa_id ? { ...m, contaSolicitada: true, status: "aguardando" } : m,
         ),
       }), "solicitar_fechamento");
-      if (mesa_id === MESA_DEMO) registrarEvento("fechamento-solicitado");
       return true;
     },
-    [aplicar, funcionarioAtivo, registrarEvento],
+    [aplicar, funcionarioAtivo],
   );
 
   const alternarServico = useCallback(
@@ -1266,7 +1204,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         desfeito_em: null,
       };
 
-      // Guarda o estado anterior para o "Desfazer" da demonstracao.
+      // Guarda o estado anterior para a janela de desfazer.
       snapshotsSemConsumo.current.set(registro.encerramento_id, {
         mesa: { ...mesa },
         pessoas: pessoasDaAbertura.map((p) => ({ ...p })),
@@ -1305,7 +1243,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   );
 
   /**
-   * Desfaz um encerramento sem consumo dentro da janela da demonstracao. Só age se a mesa
+   * Desfaz um encerramento sem consumo dentro da janela permitida. Só age se a mesa
    * continuou livre e ninguem lancou nada nela nesse intervalo. O registro de auditoria
    * nao e apagado: fica marcado como desfeito.
    */
@@ -1352,30 +1290,6 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [aplicar],
   );
 
-  const reiniciarDemonstracao = useCallback(() => {
-    if (!modoDemo) {
-      notificar("Reiniciar demonstração só está disponível com CAV_DEMO_MODE=true.", "atencao");
-      return;
-    }
-    pedidosEnviados.current.clear();
-    travaEnvio.current.clear();
-    travaTicket.current.clear();
-    travaSemConsumo.current.clear();
-    aberturasEncerradas.current.clear();
-    snapshotsSemConsumo.current.clear();
-    sequencia.current = 0;
-    const inicial = estadoInicial(organizacaoId);
-    espelho.current = inicial;
-    setDados(inicial);
-    setToasts([]);
-    setEnviandoMesa(null);
-    setRoteiroAberto(false);
-    setConcluidos([]);
-    setPassoAtual(1);
-    persistir(inicial, "reiniciar");
-    notificar("Operação reiniciada: mesas, fichas e roteiro voltaram ao início.", "info");
-  }, [modoDemo, notificar, organizacaoId, persistir]);
-
   const configurarOperacao = useCallback(
     async (quantidade: number, largura: 58 | 80) => {
       const resultado = await client.comanda.configurar({
@@ -1389,7 +1303,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [carregarRemoto],
   );
 
-  const salvarProduto = useCallback(async (produto: MenuItem) => {
+  const salvarProduto = useCallback(async (produto: ProdutoConfiguracao) => {
     await client.comanda.produtoSalvar(produto);
     await carregarRemoto();
   }, [carregarRemoto]);
@@ -1399,7 +1313,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       funcionarioId: string;
       nome: string;
       perfil: Perfil;
-      pin: string;
+      pin?: string;
+      ativo: boolean;
     }) => {
       await client.comanda.funcionarioSalvar(entrada);
       await carregarRemoto();
@@ -1407,20 +1322,25 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [carregarRemoto],
   );
 
+  const alterarPin = useCallback(async (pinAtual: string, pinNovo: string) => {
+    await client.comanda.pinAlterar({ pinAtual, pinNovo });
+  }, []);
+
   const valor: ComandaState = {
     perfilAtivo: funcionarioAtivo.funcionario_perfil,
     funcionarioAtivo,
     trocarPerfil,
     sair,
     cardapio: cardapioAtual,
+    produtos: produtosAtuais,
     quantidadeMesas,
     larguraRecibo,
     funcionarios: funcionariosAtuais,
-    modoDemo,
     recarregarConfiguracao: carregarRemoto,
     configurarOperacao,
     salvarProduto,
     salvarFuncionario,
+    alterarPin,
 
     mesas: dados.mesas,
     pessoas: dados.pessoas,
@@ -1461,16 +1381,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     fecharConta,
     encerrarSemConsumo,
     desfazerEncerramentoSemConsumo,
-    reiniciarDemonstracao,
     notificar,
     descartarToast,
 
-    roteiroAberto,
-    alternarRoteiro,
-    passoAtual,
-    irParaPasso,
-    concluidos,
-    registrarEvento,
   };
 
   if (carregando) {
@@ -1488,6 +1401,3 @@ export function useComanda(): ComandaState {
   if (!contexto) throw new Error("useComanda precisa estar dentro de ComandaProvider");
   return contexto;
 }
-
-/** Atalho para o cardapio provisorio, exposto junto do estado por conveniencia. */
-export { cardapio, compartilhadoId, ehCompartilhado };

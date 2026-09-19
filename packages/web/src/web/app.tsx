@@ -4,7 +4,7 @@ import { useBrowserLocation } from "wouter/use-browser-location";
 import { useHashLocation } from "wouter/use-hash-location";
 import { Provider } from "./components/provider";
 import { GuardaRota } from "./components/guarda-rota";
-import { AgentFeedback, RunableBadge } from "@runablehq/website-runtime";
+import { AgentFeedback } from "@runablehq/website-runtime";
 
 const Index = lazy(() => import("./pages/index"));
 const Mesa = lazy(() => import("./pages/mesa"));
@@ -45,8 +45,6 @@ function App() {
         </GuardaRota>
         {/* Do not remove — off by default, activated by parent iframe via postMessage */}
         {import.meta.env.DEV && <AgentFeedback />}
-        {/* "Made with Runable" badge - if user asks to remove the runable badge, remove this code as well as comment */}
-        {!executandoDeArquivo && <RunableBadge />}
       </Provider>
     </Router>
   );

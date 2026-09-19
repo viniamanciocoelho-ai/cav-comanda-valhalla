@@ -1,6 +1,5 @@
 // Comanda de uma mesa: consumo por pessoa, itens compartilhados, envio para producao,
-// entrega na mesa e pedido de fechamento. A rota e generica (/mesa/:id): a Mesa 08 e apenas
-// a mesa do roteiro, nao um caso especial de codigo.
+// entrega na mesa e pedido de fechamento.
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
@@ -28,8 +27,8 @@ import {
 import { MenuSheet } from "../components/menu-sheet";
 import { SemConsumoSheet } from "../components/sem-consumo-sheet";
 import { Action, IconAction } from "../components/ui/action";
-import { DemoTag, RuneDivider, SectionHeading, StatusPill } from "../components/ui/pieces";
-import { COMPARTILHADO, MESA_DEMO, TAXA_SERVICO, compartilhadoId } from "../lib/demo-data";
+import { RuneDivider, SectionHeading, StatusPill } from "../components/ui/pieces";
+import { COMPARTILHADO, TAXA_SERVICO, compartilhadoId } from "../lib/operacao";
 import {
   desde,
   destinoLabel,
@@ -224,7 +223,6 @@ export default function MesaPage() {
     avaliarSemConsumo,
     encerrarSemConsumo,
     desfazerEncerramentoSemConsumo,
-    registrarEvento,
     notificar,
   } = useComanda();
 
@@ -235,7 +233,7 @@ export default function MesaPage() {
   const [cardapioAberto, setCardapioAberto] = useState(false);
   const [novaPessoa, setNovaPessoa] = useState("");
   const [semConsumoAberto, setSemConsumoAberto] = useState(false);
-  // Encerramento sem consumo recem-feito: alimenta o "Desfazer" da demonstracao.
+  // Encerramento sem consumo recente: alimenta a acao "Desfazer".
   const [desfazer, setDesfazer] = useState<{ encerramento_id: string; ate: number } | null>(null);
   const [restante, setRestante] = useState(0);
   // Uma operacao por clique nos dois botoes que gravam (lib/hooks.ts).
@@ -251,16 +249,7 @@ export default function MesaPage() {
   const fechando = fechamento.processando;
   const semConsumo = avaliarSemConsumo(mesa_id);
 
-  // Passo 2 do roteiro: a comanda da mesa do roteiro foi aberta de fato.
-  useEffect(() => {
-    if (mesa_id === MESA_DEMO && mesa?.ativa) {
-      // O evento alimenta o roteiro visual depois que a mesa foi aberta.
-      // oxlint-disable-next-line react/set-state-in-effect
-      registrarEvento("mesa-08-aberta");
-    }
-  }, [mesa?.ativa, mesa_id, registrarEvento]);
-
-  // Contagem regressiva do "Desfazer": passados 10 s a oferta simplesmente desaparece.
+  // Contagem regressiva do "Desfazer": passados 10 s a oferta desaparece.
   useEffect(() => {
     if (!desfazer) {
       // O contador precisa ser zerado quando a oferta de desfazer desaparece.
@@ -303,8 +292,7 @@ export default function MesaPage() {
         <section className="border-line bg-surface rounded-lg border p-8 text-center">
           <p className="text-parchment text-[17px]">Esta mesa não existe nesta configuração.</p>
           <p className="text-muted mx-auto mt-2 max-w-md text-[13px] leading-relaxed">
-            Nesta demonstração o salão tem 10 mesas. A quantidade real será definida no
-            levantamento.
+            Confira a configuração da operação para ver as mesas disponíveis.
           </p>
           <Action variante="primaria" className="mt-5" onClick={voltar}>
             <ArrowLeft className="size-4" />
@@ -410,7 +398,7 @@ export default function MesaPage() {
 
   const subtitulo = mesa.ativa
     ? `${pessoas.length} ${pessoas.length === 1 ? "pessoa" : "pessoas"} · aberta há ${desde(mesa.abertaEm)} · consumo separado por pessoa`
-    : "Mesa livre nesta demonstração";
+    : "Mesa livre";
 
   return (
     <AppShell titulo={`Mesa ${mesaLabel(mesa_id)} · comanda`} subtitulo={subtitulo}>
@@ -419,9 +407,6 @@ export default function MesaPage() {
           <ArrowLeft className="size-4" />
           {perfilAtivo === "gerencia" ? "Salão" : "Minhas mesas"}
         </Action>
-        <DemoTag>Dados sincronizados</DemoTag>
-        <DemoTag>Cardápio provisório</DemoTag>
-        {mesa.demonstracao ? <DemoTag>Mesa do roteiro</DemoTag> : null}
       </div>
 
       {desfazer ? (

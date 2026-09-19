@@ -53,6 +53,7 @@ export function Login() {
         </label>
         <input
           id="organizacao"
+          aria-label="Organização"
           value={organizacao}
           onChange={(evento) => setOrganizacao(evento.target.value)}
           autoComplete="organization"
@@ -67,6 +68,7 @@ export function Login() {
         </label>
         <input
           id="pin"
+          aria-label="PIN"
           value={pin}
           onChange={(evento) => setPin(evento.target.value.replace(/\D/g, "").slice(0, 4))}
           inputMode="numeric"

@@ -6,7 +6,7 @@ import { Beer, Check, ChefHat, Flame, RotateCcw } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
-import { DemoTag, SectionHeading, StatusPill } from "../components/ui/pieces";
+import { SectionHeading, StatusPill } from "../components/ui/pieces";
 import { useAcaoUnica } from "../lib/hooks";
 import {
   desde,
@@ -204,7 +204,6 @@ export default function ProducaoPage() {
         hint="O pedido enviado na comanda cai aqui na hora, separado por destino, com mesa e pessoa."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <DemoTag>Dados sincronizados</DemoTag>
             <Action
               variante={somenteAbertas ? "primaria" : "secundaria"}
               onClick={() => setSomenteAbertas((v) => !v)}

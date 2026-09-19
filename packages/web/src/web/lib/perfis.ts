@@ -1,42 +1,10 @@
 // Perfis autorizados pelo backend. Cada funcionario entra com PIN individual e a sessao
 // determina as rotas e a identidade usada nas operacoes.
 
-import type { Funcionario, Perfil } from "./types";
+import type { Perfil } from "./types";
 
 export const AVISO_ACESSO =
   "Acesso protegido por PIN individual e permissões do perfil.";
-
-export const funcionarios: Funcionario[] = [
-  {
-    funcionario_id: "f-gerencia",
-    funcionario_nome: "Gerência",
-    funcionario_perfil: "gerencia",
-    rotulo: "Gerência",
-    resumo: "Salão inteiro, valores, produção, fechamentos e configuração",
-  },
-  {
-    funcionario_id: "f-rafael",
-    funcionario_nome: "Rafael",
-    funcionario_perfil: "garcom",
-    rotulo: "Rafael (garçom)",
-    resumo: "Mesas do turno, lançamento de pedido e acompanhamento",
-    turno: "Turno da noite · 18h às 00h",
-  },
-  {
-    funcionario_id: "f-producao",
-    funcionario_nome: "Cozinha e bar",
-    funcionario_perfil: "producao",
-    rotulo: "Cozinha e bar",
-    resumo: "Fichas de preparo separadas por destino",
-  },
-  {
-    funcionario_id: "f-caixa",
-    funcionario_nome: "Caixa",
-    funcionario_perfil: "caixa",
-    rotulo: "Caixa",
-    resumo: "Fila de fechamento, divisão da conta, serviço e NFC-e",
-  },
-];
 
 export const perfilLabel: Record<Perfil, string> = {
   gerencia: "Gerência",
@@ -72,7 +40,7 @@ export function podeAcessar(perfil: Perfil, rota: string): boolean {
   });
 }
 
-/** O que cada perfil nao pode fazer. Exibido no seletor, sem tela de senha falsa. */
+/** O que cada perfil nao pode fazer. Exibido no seletor de sessao. */
 export const restricoes: Record<Perfil, string[]> = {
   gerencia: [],
   garcom: [

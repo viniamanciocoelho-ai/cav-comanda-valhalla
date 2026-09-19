@@ -1,13 +1,11 @@
-// Visao da gerencia: o salao inteiro, os numeros do turno e os pedidos de cancelamento
-// que dependem de autorizacao. Toque na mesa para abrir a comanda.
+// Visao da gerencia: o salao, os indicadores do turno e os pedidos de cancelamento.
 
 import { useLocation } from "wouter";
 import { ArrowRight, Check, Clock, ShieldAlert, Undo2, Users } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
 import { Action } from "../components/ui/action";
-import { DemoTag, Metric, RuneDivider, SectionHeading, StatusPill } from "../components/ui/pieces";
-import { MESA_DEMO } from "../lib/demo-data";
+import { Metric, SectionHeading, StatusPill } from "../components/ui/pieces";
 import {
   desde,
   destinoLabel,
@@ -33,7 +31,6 @@ function CartaoMesa({
 }) {
   const cor = mesaStatusColor[mesa.status];
   const total = conta ? conta.total : mesa.totalFixo;
-  const destaque = mesa.demonstracao;
 
   return (
     <button
@@ -41,9 +38,7 @@ function CartaoMesa({
       onClick={() => onAbrir(mesa)}
       data-testid={`mesa-${mesa.mesa_id}`}
       aria-label={`Mesa ${mesaLabel(mesa.mesa_id)} — ${mesaStatusLabel[mesa.status]}`}
-      className={`vh-edge group bg-surface relative flex min-h-[148px] min-w-0 flex-col items-start gap-2 rounded-md border p-4 text-left transition-[border-color,transform,background-color] duration-150 hover:-translate-y-0.5 ${
-        destaque ? "border-gold/60 bg-surface-2" : "border-line hover:border-bronze/70"
-      }`}
+      className="vh-edge group bg-surface border-line relative flex min-h-[148px] min-w-0 flex-col items-start gap-2 rounded-md border p-4 text-left transition-[border-color,transform,background-color] duration-150 hover:-translate-y-0.5 hover:border-bronze/70"
       style={{ "--vh-edge-color": cor } as CSSProperties}
     >
       <div className="flex w-full items-start justify-between gap-2">
@@ -87,10 +82,6 @@ function CartaoMesa({
             </p>
           </div>
         )}
-        {destaque ? <DemoTag className="mt-3">Mesa do roteiro</DemoTag> : null}
-        {!mesa.ativa && mesa.status !== "livre" ? (
-          <p className="text-muted mt-2 text-[12px]">Mesa de apoio · sem comanda detalhada</p>
-        ) : null}
       </div>
     </button>
   );
@@ -115,75 +106,11 @@ export default function SalaoPage() {
   } = useComanda();
 
   const ocupadas = mesas.filter((mesa) => mesa.status !== "livre").length;
-  const mesaDemo = mesas.find((mesa) => mesa.mesa_id === MESA_DEMO);
-  const contaDemo = mesaDemo?.ativa ? resumo(MESA_DEMO) : null;
-
-  function abrir(mesa: Mesa) {
-    if (!mesa.ativa && mesa.status !== "livre") {
-      notificar(
-        `Mesa ${mesaLabel(mesa.mesa_id)} é uma mesa de apoio desta demonstração: ela aparece no salão, mas não tem comanda detalhada.`,
-        "info",
-      );
-      return;
-    }
-    navegar(`/mesa/${mesa.mesa_id}`);
-  }
+  const proximaMesa = filaCaixa[0];
+  const proximaConta = proximaMesa ? resumo(proximaMesa.mesa_id) : null;
 
   return (
-    <AppShell titulo="Visão do salão" subtitulo="Toque em uma mesa para abrir a comanda">
-      {/* Painel de abertura: impacto visual sem deixar de ser leitura operacional. */}
-      <section className="vh-wood vh-grain vh-brackets border-line relative mb-6 overflow-hidden rounded-lg border">
-        <div className="relative grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <div className="min-w-0">
-            <p className="font-display text-gold text-[12px] tracking-[0.28em] uppercase">
-              Valhalla Choperia · Três Lagoas
-            </p>
-            <h2 className="text-parchment mt-3 max-w-[15ch] text-[34px] leading-[0.95] tracking-[0.02em] sm:text-[44px] lg:text-[52px]">
-              Comanda por mesa
-              <span className="text-gold-bright"> e por pessoa</span>
-            </h2>
-            <RuneDivider className="mt-4 max-w-sm" />
-            <p className="text-muted mt-4 max-w-lg text-[13px] leading-relaxed">
-              Cada pessoa da mesa tem o consumo separado, os itens compartilhados são rateados e o
-              pedido segue direto para cozinha e bar. Sem papel, sem soma de cabeça na hora de
-              fechar.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <DemoTag>Dados sincronizados</DemoTag>
-              <DemoTag>Cardápio provisório</DemoTag>
-              <DemoTag>Integração fiscal prevista</DemoTag>
-            </div>
-          </div>
-
-          <div className="lg:w-[260px]">
-            <div className="border-line bg-void/70 rounded-md border p-4">
-              <p className="font-display text-muted text-[12px] tracking-[0.2em] uppercase">
-                Mesa do roteiro
-              </p>
-              <p className="font-display text-parchment mt-1 text-[26px] leading-none tracking-[0.04em]">
-                MESA {mesaLabel(MESA_DEMO)}
-              </p>
-              <p className="text-muted mt-2 text-[12px]">
-                {contaDemo
-                  ? `${pessoasDaMesa(MESA_DEMO).length} pessoas · ${desde(mesaDemo?.abertaEm ?? null)} · ${contaDemo.itens} itens`
-                  : "Conta encerrada nesta demonstração."}
-              </p>
-              <Action
-                variante="primaria"
-                full
-                className="mt-4"
-                onClick={() => navegar(`/mesa/${MESA_DEMO}`)}
-                data-testid="abrir-mesa-08"
-              >
-                Abrir comanda
-                <ArrowRight className="size-4" />
-              </Action>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Indicadores da operação */}
+    <AppShell titulo="Visão do salão" subtitulo="Acompanhe mesas, produção e solicitações do turno">
       <section className="border-line bg-surface mb-7 grid grid-cols-2 divide-y divide-[var(--vh-border)] overflow-hidden rounded-md border sm:grid-cols-4 sm:divide-y-0">
         <div className="border-line border-r">
           <Metric label="Mesas ocupadas" value={String(ocupadas)} sub={`/ ${mesas.length}`} />
@@ -207,13 +134,34 @@ export default function SalaoPage() {
         </div>
       </section>
 
-      {/* Autorizacao de cancelamento: o garcom pede, a gerencia decide. */}
+      <section className="border-line bg-surface mb-7 flex flex-wrap items-center justify-between gap-4 rounded-md border p-4">
+        <div className="min-w-0">
+          <p className="font-display text-gold text-[12px] tracking-[0.22em] uppercase">
+            Próxima conta
+          </p>
+          <p className="text-parchment mt-1 text-[18px]">
+            {proximaMesa ? `Mesa ${mesaLabel(proximaMesa.mesa_id)}` : "Nenhuma conta solicitada"}
+          </p>
+          <p className="text-muted mt-1 text-[13px]">
+            {proximaConta
+              ? `${proximaConta.divisao.length} pessoas · ${money(proximaConta.total)}`
+              : "As solicitações de fechamento aparecem aqui."}
+          </p>
+        </div>
+        {proximaMesa ? (
+          <Action variante="primaria" onClick={() => navegar("/caixa")}>
+            Abrir caixa
+            <ArrowRight className="size-4" />
+          </Action>
+        ) : null}
+      </section>
+
       {cancelamentosPendentes.length ? (
         <section className="mb-7">
           <SectionHeading
             eyebrow="Autorização da gerência"
             title={`${cancelamentosPendentes.length} ${cancelamentosPendentes.length === 1 ? "pedido de cancelamento" : "pedidos de cancelamento"}`}
-            hint="O item continua na conta até a gerência decidir. Nada sai da comanda sem autorização."
+            hint="O item continua na conta até a gerência decidir."
           />
           <ul className="grid gap-2">
             {cancelamentosPendentes.map((item) => (
@@ -300,7 +248,7 @@ export default function SalaoPage() {
             mesa={mesa}
             conta={mesa.ativa ? resumo(mesa.mesa_id) : null}
             pessoas={mesa.ativa ? pessoasDaMesa(mesa.mesa_id).length : mesa.pessoasFixas}
-            onAbrir={abrir}
+            onAbrir={(atual) => navegar(`/mesa/${atual.mesa_id}`)}
           />
         ))}
       </div>
@@ -310,8 +258,7 @@ export default function SalaoPage() {
           {filaCaixa.length}{" "}
           {filaCaixa.length === 1
             ? "mesa está na fila do caixa aguardando o fechamento."
-            : "mesas estão na fila do caixa aguardando o fechamento."}{" "}
-          O pagamento é sempre encerrado no caixa.
+            : "mesas estão na fila do caixa aguardando o fechamento."}
         </p>
       ) : null}
     </AppShell>
