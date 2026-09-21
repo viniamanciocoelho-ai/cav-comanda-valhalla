@@ -102,6 +102,8 @@ export function impressoesPublicas(linhas: LinhaFila[]): Impressao[] {
     status: linha.status,
     tentativas: linha.tentativas,
     ultimo_erro: linha.ultimoErro,
+    texto: linha.texto,
+    largura: larguraValida(linha.largura),
     criado_em: linha.criadoEm,
     atualizado_em: linha.atualizadoEm,
   }));

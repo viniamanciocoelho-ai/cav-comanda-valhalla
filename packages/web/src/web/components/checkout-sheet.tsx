@@ -8,7 +8,11 @@ import { CheckCircle2, Circle, Info, Printer } from "lucide-react";
 import { TAXA_SERVICO } from "../lib/operacao";
 import { mesaLabel, money } from "../lib/format";
 import { useAcaoUnica } from "../lib/hooks";
-import { imprimirRecibo, montarRecibo } from "../lib/recibo";
+import {
+  adaptadorImpressao,
+  lerConfiguracaoImpressaoLocal,
+} from "../lib/impressao-local";
+import { montarRecibo, serializarEscPos } from "../lib/recibo";
 import { useComanda } from "./comanda-provider";
 import { Action } from "./ui/action";
 import { Sheet } from "./ui/sheet";
@@ -32,7 +36,6 @@ export function CheckoutSheet({
     fecharConta,
     notificar,
     pessoasDaMesa,
-    larguraRecibo,
   } = useComanda();
   const [pagos, setPagos] = useState<string[]>([]);
   // Um fechamento por clique: o duplo clique nao gera dois registros (lib/hooks.ts).
@@ -59,17 +62,26 @@ export function CheckoutSheet({
 
   function imprimir() {
     try {
-      imprimirRecibo(
-        montarRecibo(
-          mesa_id,
-          pessoasDaMesa(mesa_id),
-          itensDaMesa(mesa_id),
-          conta.divisao,
-          larguraRecibo,
-        ),
-        larguraRecibo,
+      const texto = montarRecibo(
+        mesa_id,
+        pessoasDaMesa(mesa_id),
+        itensDaMesa(mesa_id),
+        conta.divisao,
+        58,
       );
-      notificar("Notinha enviada para a janela de impressão.", "sucesso");
+      const configuracao = lerConfiguracaoImpressaoLocal();
+      const envio = adaptadorImpressao.imprimir(
+        serializarEscPos(texto, configuracao.paginaCodigo),
+        { texto, largura: 58 },
+      );
+      void envio
+        .then(() => notificar("Notinha enviada para impressão.", "sucesso"))
+        .catch((erro) =>
+          notificar(
+            erro instanceof Error ? erro.message : "Não foi possível imprimir.",
+            "atencao",
+          ),
+        );
     } catch (erro) {
       notificar(erro instanceof Error ? erro.message : "Não foi possível imprimir.", "atencao");
     }

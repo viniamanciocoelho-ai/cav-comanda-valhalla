@@ -4,6 +4,7 @@ import { useBrowserLocation } from "wouter/use-browser-location";
 import { useHashLocation } from "wouter/use-hash-location";
 import { Provider } from "./components/provider";
 import { GuardaRota } from "./components/guarda-rota";
+import { ImpressaoFallback } from "./components/impressao-fallback";
 import { AgentFeedback } from "@runablehq/website-runtime";
 
 const Index = lazy(() => import("./pages/index"));
@@ -45,6 +46,7 @@ function App() {
             </Switch>
           </Suspense>
         </GuardaRota>
+        <ImpressaoFallback />
         {/* Do not remove — off by default, activated by parent iframe via postMessage */}
         {import.meta.env.DEV && <AgentFeedback />}
       </Provider>

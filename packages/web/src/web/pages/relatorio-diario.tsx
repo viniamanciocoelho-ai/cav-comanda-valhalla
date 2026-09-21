@@ -11,7 +11,11 @@ import {
   moneyCentavos,
   motivoSemConsumoLabel,
 } from "../lib/format";
-import { imprimirNoNavegador } from "../lib/recibo";
+import {
+  adaptadorImpressao,
+  lerConfiguracaoImpressaoLocal,
+} from "../lib/impressao-local";
+import { montarRelatorioDiario, serializarEscPos } from "../lib/recibo";
 import type { RelatorioDiario } from "../lib/types";
 
 function hojeOperacional() {
@@ -45,17 +49,28 @@ export default function RelatorioDiarioPage() {
     void carregar(data);
   }, [carregar, data]);
 
-  async function imprimir() {
+  function imprimir() {
+    if (!relatorio) return;
     setImprimindo(true);
     setErro(null);
     try {
-      const resultado = await client.relatorio.imprimir({ data });
-      if (resultado.modo === "navegador" && resultado.texto) {
-        imprimirNoNavegador(resultado.texto, resultado.largura);
-      }
+      const texto = montarRelatorioDiario(relatorio, 58);
+      const configuracao = lerConfiguracaoImpressaoLocal();
+      const envio = adaptadorImpressao.imprimir(
+        serializarEscPos(texto, configuracao.paginaCodigo),
+        { texto, largura: 58 },
+      );
+      void envio
+        .catch((falha) => {
+          setErro(
+            falha instanceof Error
+              ? falha.message
+              : "Não foi possível imprimir o relatório.",
+          );
+        })
+        .finally(() => setImprimindo(false));
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Não foi possível imprimir o relatório.");
-    } finally {
       setImprimindo(false);
     }
   }
@@ -88,7 +103,7 @@ export default function RelatorioDiarioPage() {
             </label>
             <Action
               variante="secundaria"
-              onClick={() => void imprimir()}
+              onClick={imprimir}
               disabled={carregando || imprimindo || !relatorio}
             >
               <Printer className="size-4" />

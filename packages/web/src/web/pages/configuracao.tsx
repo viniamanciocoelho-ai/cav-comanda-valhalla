@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { KeyRound, Moon, Printer, Save, Sun, UserPlus, Users } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { useComanda } from "../components/comanda-provider";
+import { ImpressoraLocalPanel } from "../components/impressora-local-panel";
 import { Action } from "../components/ui/action";
 import { SectionHeading, StatusPill } from "../components/ui/pieces";
 import { useTema } from "../components/theme-provider";
@@ -196,8 +197,9 @@ export default function ConfiguracaoPage() {
           <SectionHeading
             eyebrow="Impressão térmica"
             title="Destinos de impressão"
-            hint="Cada destino usa uma térmica de rede na porta 9100. Sem configuração, o teste e a reimpressão usam o navegador."
+            hint="O celular imprime localmente por Bluetooth, RawBT ou Chrome. As configurações abaixo continuam disponíveis para térmicas de rede."
           />
+          <ImpressoraLocalPanel notificar={notificar} />
           <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
             <label className="text-muted text-[12px]">
               Destino
@@ -305,7 +307,7 @@ export default function ConfiguracaoPage() {
               }
             >
               <Printer className="size-4" />
-              Imprimir teste
+              Testar impressora de rede
             </Action>
           </div>
         </section>

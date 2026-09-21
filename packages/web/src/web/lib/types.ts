@@ -129,6 +129,8 @@ export interface Impressao {
   status: StatusImpressao;
   tentativas: number;
   ultimo_erro: string | null;
+  texto: string;
+  largura: 58 | 80;
   criado_em: string;
   atualizado_em: string;
 }

@@ -23,7 +23,11 @@ import {
 import { paraCentavos, paraReais, ratear } from "../lib/rateio";
 import { horaAgora } from "../lib/format";
 import { client } from "../lib/api";
-import { imprimirNoNavegador } from "../lib/recibo";
+import {
+  adaptadorImpressao,
+  lerConfiguracaoImpressaoLocal,
+} from "../lib/impressao-local";
+import { serializarEscPos } from "../lib/recibo";
 import {
   backoffMs,
   carregarFalhas,
@@ -1668,26 +1672,52 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     async (destino: ConfiguracaoImpressora["destino"]) => {
       const resultado = await client.impressao.impressoraTestar({ destino });
       if (resultado.modo === "navegador") {
-        if (!resultado.texto) throw new Error("Não foi possível montar o teste de impressão.");
-        imprimirNoNavegador(resultado.texto, resultado.largura);
-        return;
+        throw new Error(
+          "Nenhuma impressora de rede está ativa neste destino. Use o teste da impressora deste celular.",
+        );
       }
     },
     [],
   );
 
   const reimprimir = useCallback(
-    async (impressao_id: string) => {
-      const resultado = await client.impressao.impressaoReimprimir({ impressaoId: impressao_id });
-      if (resultado.modo === "navegador") {
-        imprimirNoNavegador(resultado.texto, resultado.largura);
-        notificar("Reimpressão aberta no navegador.", "info");
-      } else {
-        notificar("Reimpressão enviada para a fila da impressora.", "sucesso");
+    (impressao_id: string) => {
+      const impressao = impressoesAtuais.find(
+        (item) => item.impressao_id === impressao_id,
+      );
+      const impressoraRede = impressao
+        ? impressorasAtuais.find(
+            (item) => item.destino === impressao.destino && item.ativa,
+          )
+        : undefined;
+      if (impressao && !impressoraRede) {
+        const configuracao = lerConfiguracaoImpressaoLocal();
+        const envio = adaptadorImpressao.imprimir(
+          serializarEscPos(impressao.texto, configuracao.paginaCodigo),
+          { texto: impressao.texto, largura: impressao.largura },
+        );
+        return envio.then(() => {
+          notificar("Reimpressão enviada pelo celular.", "sucesso");
+        });
       }
-      await carregarRemoto(true);
+      return client.impressao
+        .impressaoReimprimir({ impressaoId: impressao_id })
+        .then(async (resultado) => {
+          if (resultado.modo === "navegador") {
+            throw new Error(
+              "A impressão não está mais disponível nesta tela. Atualize os dados e use a impressora deste celular.",
+            );
+          }
+          notificar("Reimpressão enviada para a fila da impressora.", "sucesso");
+          await carregarRemoto(true);
+        });
     },
-    [carregarRemoto, notificar],
+    [
+      carregarRemoto,
+      impressoesAtuais,
+      impressorasAtuais,
+      notificar,
+    ],
   );
 
   const reconectar = useCallback(async () => {

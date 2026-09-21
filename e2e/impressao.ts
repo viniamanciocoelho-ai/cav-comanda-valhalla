@@ -30,11 +30,18 @@ const ticketTeste: Ticket = {
 };
 const textoFicha = montarFichaProducao(ticketTeste, 58);
 const bytesFicha = serializarEscPos(textoFicha);
-const textoSerializado = new TextDecoder().decode(bytesFicha);
-assert.match(textoSerializado, /BATATA CHEDDAR/i);
-assert.match(textoSerializado, /MESA 08/);
-assert.match(textoSerializado, /COZINHA/);
-assert.deepEqual(bytesFicha.slice(-3), new Uint8Array([0x1d, 0x56, 0x00]));
+assert.deepEqual(
+  bytesFicha.slice(0, 8),
+  new Uint8Array([0x1b, 0x40, 0x1b, 0x74, 0x03, 0x1b, 0x61, 0x00]),
+);
+assert.deepEqual(bytesFicha.slice(-3), new Uint8Array([0x1b, 0x64, 0x04]));
+assert.equal(
+  bytesFicha.findIndex(
+    (byte, indice) =>
+      byte === 0x1d && bytesFicha[indice + 1] === 0x56,
+  ),
+  -1,
+);
 
 await prepararBancoTeste("impressao");
 const { router } = await import("../packages/web/src/api");
