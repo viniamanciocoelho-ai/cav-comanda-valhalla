@@ -27,6 +27,7 @@ export const TABELAS_BACKUP = {
   mesas: [
     "organizacao_id",
     "mesa_id",
+    "atendimento_id",
     "status",
     "ativa",
     "pessoas_fixas",
@@ -36,12 +37,32 @@ export const TABELAS_BACKUP = {
     "conta_solicitada",
     "servico_incluso",
   ],
-  pessoas_da_comanda: ["organizacao_id", "pessoa_id", "mesa_id", "nome"],
+  balcoes: [
+    "organizacao_id",
+    "balcao_id",
+    "atendimento_id",
+    "status",
+    "ativa",
+    "aberta_em",
+    "garcom_id",
+    "conta_solicitada",
+    "servico_incluso",
+  ],
+  pessoas_da_comanda: [
+    "organizacao_id",
+    "pessoa_id",
+    "atendimento_id",
+    "mesa_id",
+    "balcao_id",
+    "nome",
+  ],
   itens_pedido: [
     "organizacao_id",
     "item_id",
     "pedido_id",
+    "atendimento_id",
     "mesa_id",
+    "balcao_id",
     "pessoa_id",
     "produto_id",
     "nome",
@@ -62,7 +83,9 @@ export const TABELAS_BACKUP = {
     "organizacao_id",
     "ticket_id",
     "pedido_id",
+    "atendimento_id",
     "mesa_id",
+    "balcao_id",
     "destino_producao",
     "status",
     "linhas_json",
@@ -76,7 +99,9 @@ export const TABELAS_BACKUP = {
   fechamentos: [
     "organizacao_id",
     "fechamento_id",
+    "atendimento_id",
     "mesa_id",
+    "balcao_id",
     "hora",
     "subtotal_centavos",
     "servico_centavos",
@@ -91,7 +116,9 @@ export const TABELAS_BACKUP = {
     "organizacao_id",
     "fechamento_id",
     "item_id",
+    "atendimento_id",
     "mesa_id",
+    "balcao_id",
     "produto_id",
     "nome",
     "preco_centavos",
@@ -103,7 +130,9 @@ export const TABELAS_BACKUP = {
     "organizacao_id",
     "cancelamento_id",
     "item_id",
+    "atendimento_id",
     "mesa_id",
+    "balcao_id",
     "produto_id",
     "nome",
     "preco_centavos",
@@ -116,7 +145,9 @@ export const TABELAS_BACKUP = {
   encerramentos_sem_consumo: [
     "organizacao_id",
     "encerramento_id",
+    "atendimento_id",
     "mesa_id",
+    "balcao_id",
     "abertura_id",
     "motivo",
     "observacao",
@@ -164,12 +195,15 @@ export const TABELAS_BACKUP = {
     "destino",
     "tipo",
     "referencia_id",
+    "atendimento_id",
     "mesa_id",
+    "balcao_id",
     "texto",
     "largura",
     "status",
     "tentativas",
     "ultimo_erro",
+    "impresso_em",
     "criado_em",
     "atualizado_em",
   ],
@@ -180,7 +214,7 @@ export type RegistroBackup = Record<string, string | number | null>;
 
 export interface ArquivoBackup {
   formato: "cav-comanda-backup";
-  versao: 1;
+  versao: 2;
   criadoEm: string;
   organizacoesIncluidas: string[];
   tabelas: Record<NomeTabelaBackup, RegistroBackup[]>;
@@ -215,7 +249,7 @@ export async function exportarBanco(client: Client, agora = new Date()): Promise
   }
   return {
     formato: "cav-comanda-backup",
-    versao: 1,
+    versao: 2,
     criadoEm: agora.toISOString(),
     organizacoesIncluidas: tabelas.organizacoes.map((registro) =>
       String(registro.organizacao_id),
@@ -224,14 +258,104 @@ export async function exportarBanco(client: Client, agora = new Date()): Promise
   };
 }
 
-export function validarIntegridade(backup: unknown): asserts backup is ArquivoBackup {
+function atendimentoLegado(registro: RegistroBackup) {
+  return `mesa:${registro.mesa_id}:legado`;
+}
+
+function normalizarRegistroLegado(
+  tabela: NomeTabelaBackup,
+  registro: RegistroBackup,
+): RegistroBackup {
+  if (tabela === "mesas") {
+    return {
+      ...registro,
+      atendimento_id:
+        registro.atendimento_id ??
+        (registro.ativa === 1 ? atendimentoLegado(registro) : null),
+    };
+  }
+  if (
+    tabela === "pessoas_da_comanda" ||
+    tabela === "itens_pedido" ||
+    tabela === "fichas_producao" ||
+    tabela === "fechamentos" ||
+    tabela === "itens_fechamento" ||
+    tabela === "cancelamentos_autorizados" ||
+    tabela === "encerramentos_sem_consumo" ||
+    tabela === "fila_impressoes"
+  ) {
+    return {
+      ...registro,
+      atendimento_id: registro.atendimento_id ?? atendimentoLegado(registro),
+      balcao_id: registro.balcao_id ?? null,
+      ...(tabela === "fila_impressoes"
+        ? { impresso_em: registro.impresso_em ?? null }
+        : {}),
+    };
+  }
+  return registro;
+}
+
+export function normalizarBackup(backup: unknown): ArquivoBackup {
   if (!backup || typeof backup !== "object") throw new Error("Backup ilegível.");
-  const candidato = backup as Partial<ArquivoBackup>;
-  if (candidato.formato !== "cav-comanda-backup" || candidato.versao !== 1) {
+  const candidato = backup as {
+    formato?: string;
+    versao?: number;
+    criadoEm?: string;
+    organizacoesIncluidas?: string[];
+    tabelas?: Record<string, unknown>;
+  };
+  if (
+    candidato.formato !== "cav-comanda-backup" ||
+    (candidato.versao !== 1 && candidato.versao !== 2)
+  ) {
     throw new Error("Formato de backup não reconhecido.");
   }
   if (!candidato.criadoEm || !Number.isFinite(Date.parse(candidato.criadoEm))) {
     throw new Error("Backup sem data válida.");
+  }
+  if (!candidato.tabelas || typeof candidato.tabelas !== "object") {
+    throw new Error("Backup sem tabelas.");
+  }
+  if (!Array.isArray(candidato.organizacoesIncluidas)) {
+    throw new Error("Backup sem organizações.");
+  }
+  if (candidato.versao === 1) {
+    const tabelas = {} as ArquivoBackup["tabelas"];
+    for (const tabela of Object.keys(TABELAS_BACKUP) as NomeTabelaBackup[]) {
+      const registros = tabela === "balcoes" ? [] : candidato.tabelas[tabela];
+      if (!Array.isArray(registros)) {
+        throw new Error(`Tabela ausente no backup: ${tabela}.`);
+      }
+      tabelas[tabela] = registros.map((registro) => {
+        if (!registro || typeof registro !== "object") {
+          throw new Error(`Registro inválido na tabela ${tabela}.`);
+        }
+        return normalizarRegistroLegado(tabela, registro as RegistroBackup);
+      });
+    }
+    return {
+      formato: "cav-comanda-backup",
+      versao: 2,
+      criadoEm: candidato.criadoEm,
+      organizacoesIncluidas: candidato.organizacoesIncluidas.map(String),
+      tabelas,
+    };
+  }
+  return backup as ArquivoBackup;
+}
+
+export function validarIntegridade(backup: unknown): asserts backup is ArquivoBackup {
+  if (!backup || typeof backup !== "object") throw new Error("Backup ilegível.");
+  const candidato = backup as Partial<ArquivoBackup>;
+  if (candidato.formato !== "cav-comanda-backup" || candidato.versao !== 2) {
+    throw new Error("Formato de backup não reconhecido.");
+  }
+  if (!candidato.criadoEm || !Number.isFinite(Date.parse(candidato.criadoEm))) {
+    throw new Error("Backup sem data válida.");
+  }
+  if (!Array.isArray(candidato.organizacoesIncluidas)) {
+    throw new Error("Backup sem organizações.");
   }
   if (!candidato.tabelas || typeof candidato.tabelas !== "object") {
     throw new Error("Backup sem tabelas.");
@@ -293,8 +417,9 @@ export async function aplicarRetencaoLocal(diretorio: string, manter: number) {
 
 export async function lerBackup(arquivo: string): Promise<ArquivoBackup> {
   const backup = JSON.parse(await readFile(arquivo, "utf8")) as unknown;
-  validarIntegridade(backup);
-  return backup;
+  const normalizado = normalizarBackup(backup);
+  validarIntegridade(normalizado);
+  return normalizado;
 }
 
 export function validarConfirmacaoRestauracao(backup: ArquivoBackup, confirmacao?: string) {
@@ -308,9 +433,10 @@ export function validarConfirmacaoRestauracao(backup: ArquivoBackup, confirmacao
 
 export async function restaurarBanco(
   client: Client,
-  backup: ArquivoBackup,
+  backupRecebido: ArquivoBackup | unknown,
   confirmacao?: string,
 ) {
+  const backup = normalizarBackup(backupRecebido);
   validarIntegridade(backup);
   validarConfirmacaoRestauracao(backup, confirmacao);
   const comandos: InStatement[] = [];

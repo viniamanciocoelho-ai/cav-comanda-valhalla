@@ -2,7 +2,9 @@ import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import { autenticado } from "./comanda";
 import {
+  concluirImpressaoLocal,
   obterImpressao,
+  reservarImpressaoLocal,
   solicitarReimpressao,
   testarImpressora,
 } from "../lib/impressao";
@@ -70,8 +72,43 @@ export const impressaoReimprimir = autenticado
     return solicitarReimpressao(context.sessao.organizacaoId, input.impressaoId);
   });
 
+function exigirProducao(perfil: string) {
+  if (perfil !== "gerencia" && perfil !== "producao") throw new ORPCError("FORBIDDEN");
+}
+
+export const impressaoLocalReservar = autenticado
+  .input(z.object({ destino: z.enum(["cozinha", "bar"]) }))
+  .handler(async ({ input, context }) => {
+    exigirProducao(context.sessao.funcionario.funcionario_perfil);
+    return {
+      impressao: await reservarImpressaoLocal(context.sessao.organizacaoId, input.destino),
+    };
+  });
+
+export const impressaoLocalConcluir = autenticado
+  .input(
+    z.object({
+      impressaoId: z.string().trim().min(1).max(120),
+      sucesso: z.boolean(),
+      erro: z.string().trim().max(240).optional(),
+    }),
+  )
+  .handler(async ({ input, context }) => {
+    exigirProducao(context.sessao.funcionario.funcionario_perfil);
+    const fila = await obterImpressao(context.sessao.organizacaoId, input.impressaoId);
+    if (!fila || fila.destino === "caixa") throw new ORPCError("NOT_FOUND");
+    return concluirImpressaoLocal(
+      context.sessao.organizacaoId,
+      input.impressaoId,
+      input.sucesso,
+      input.erro,
+    );
+  });
+
 export const impressao = {
   impressoraSalvar,
   impressoraTestar,
   impressaoReimprimir,
+  impressaoLocalReservar,
+  impressaoLocalConcluir,
 };

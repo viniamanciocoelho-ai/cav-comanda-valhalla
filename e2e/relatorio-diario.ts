@@ -89,11 +89,19 @@ const produtoCozinha = inicial.cardapio.find((produto) => produto.destino_produc
 assert.ok(produtoBar);
 assert.ok(produtoCozinha);
 const agora = new Date().toISOString();
-const pessoa = { pessoa_id: "p-relatorio", nome: "Cliente", mesa_id: 1 };
+const pessoa = {
+  pessoa_id: "p-relatorio",
+  nome: "Cliente",
+  atendimento_id: "at-relatorio",
+  mesa_id: 1,
+  balcao_id: null,
+};
 const itemBase = {
   organizacao_id: "valhalla",
   pedido_id: null,
+  atendimento_id: "at-relatorio",
   mesa_id: 1,
+  balcao_id: null,
   pessoa_id: pessoa.pessoa_id,
   quantidade: 1,
   observacao: "",
@@ -134,6 +142,7 @@ await gerencia.comanda.persistir({
             ...mesa,
             status: "ocupada" as const,
             ativa: true,
+            atendimento_id: "at-relatorio",
             abertaEm: agora,
             garcom_id: sessaoGerencia.funcionario.funcionario_id,
           }
@@ -158,7 +167,9 @@ const tickets = [itemCancelado, itemFechado].map((item) => ({
   organizacao_id: "valhalla",
   ticket_id: `ticket-${item.item_id}`,
   pedido_id: pedidoId,
+  atendimento_id: "at-relatorio",
   mesa_id: 1,
+  balcao_id: null,
   destino_producao: item.destino_producao,
   status: "enviado" as const,
   linhas: [
@@ -242,6 +253,7 @@ await gerencia.comanda.persistir({
             ...mesa,
             status: "livre" as const,
             ativa: false,
+            atendimento_id: null,
             pessoasFixas: 0,
             totalFixo: 0,
             abertaEm: null,
@@ -257,7 +269,9 @@ await gerencia.comanda.persistir({
       {
         organizacao_id: "valhalla",
         fechamento_id: "fechamento-relatorio",
+        atendimento_id: "at-relatorio",
         mesa_id: 1,
+        balcao_id: null,
         hora: "12:00",
         subtotal: subtotalCentavos / 100,
         servico: servicoCentavos / 100,

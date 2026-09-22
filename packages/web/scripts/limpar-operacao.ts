@@ -1,12 +1,16 @@
 import { createClient, type Client } from "@libsql/client";
 
 export interface ResultadoLimpeza {
+  filaImpressoes: number;
+  itensFechamento: number;
+  cancelamentosAutorizados: number;
   fichasProducao: number;
   itensPedido: number;
   pessoasDaComanda: number;
   fechamentos: number;
   encerramentosSemConsumo: number;
   mesasReiniciadas: number;
+  balcoesReiniciados: number;
 }
 
 export async function limparOperacao(
@@ -28,6 +32,18 @@ export async function limparOperacao(
 
   const resultados = await client.batch(
     [
+      {
+        sql: "DELETE FROM fila_impressoes WHERE organizacao_id = ?",
+        args: [organizacao],
+      },
+      {
+        sql: "DELETE FROM itens_fechamento WHERE organizacao_id = ?",
+        args: [organizacao],
+      },
+      {
+        sql: "DELETE FROM cancelamentos_autorizados WHERE organizacao_id = ?",
+        args: [organizacao],
+      },
       {
         sql: "DELETE FROM fichas_producao WHERE organizacao_id = ?",
         args: [organizacao],
@@ -52,8 +68,21 @@ export async function limparOperacao(
         sql: `UPDATE mesas
           SET status = 'livre',
               ativa = 0,
+              atendimento_id = NULL,
               pessoas_fixas = 0,
               total_fixo_centavos = 0,
+              aberta_em = NULL,
+              garcom_id = NULL,
+              conta_solicitada = 0,
+              servico_incluso = 1
+          WHERE organizacao_id = ?`,
+        args: [organizacao],
+      },
+      {
+        sql: `UPDATE balcoes
+          SET status = 'livre',
+              ativa = 0,
+              atendimento_id = NULL,
               aberta_em = NULL,
               garcom_id = NULL,
               conta_solicitada = 0,
@@ -72,12 +101,16 @@ export async function limparOperacao(
   );
 
   return {
-    fichasProducao: resultados[0]?.rowsAffected ?? 0,
-    itensPedido: resultados[1]?.rowsAffected ?? 0,
-    pessoasDaComanda: resultados[2]?.rowsAffected ?? 0,
-    fechamentos: resultados[3]?.rowsAffected ?? 0,
-    encerramentosSemConsumo: resultados[4]?.rowsAffected ?? 0,
-    mesasReiniciadas: resultados[5]?.rowsAffected ?? 0,
+    filaImpressoes: resultados[0]?.rowsAffected ?? 0,
+    itensFechamento: resultados[1]?.rowsAffected ?? 0,
+    cancelamentosAutorizados: resultados[2]?.rowsAffected ?? 0,
+    fichasProducao: resultados[3]?.rowsAffected ?? 0,
+    itensPedido: resultados[4]?.rowsAffected ?? 0,
+    pessoasDaComanda: resultados[5]?.rowsAffected ?? 0,
+    fechamentos: resultados[6]?.rowsAffected ?? 0,
+    encerramentosSemConsumo: resultados[7]?.rowsAffected ?? 0,
+    mesasReiniciadas: resultados[8]?.rowsAffected ?? 0,
+    balcoesReiniciados: resultados[9]?.rowsAffected ?? 0,
   };
 }
 

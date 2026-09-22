@@ -19,6 +19,8 @@ import { dinheiroSchema, estadoPersistidoSchema } from "../lib/comanda-schema";
 const perfis = ["gerencia", "garcom", "producao", "caixa"] as const;
 const acoes = [
   "abrir_mesa",
+  "abrir_balcao",
+  "transferir_balcao_mesa",
   "alterar_comanda",
   "enviar_pedido",
   "mover_producao",
@@ -34,6 +36,8 @@ const acoes = [
 
 const permissoes: Record<(typeof acoes)[number], Perfil[]> = {
   abrir_mesa: ["gerencia", "garcom"],
+  abrir_balcao: ["gerencia", "garcom"],
+  transferir_balcao_mesa: ["gerencia"],
   alterar_comanda: ["gerencia", "garcom"],
   enviar_pedido: ["gerencia", "garcom"],
   mover_producao: ["gerencia", "producao"],
@@ -159,6 +163,7 @@ export const persistir = autenticado
     const estadoRecebido = estadoValidado.data as EstadoPersistido;
     const colecoes = [
       estadoRecebido?.mesas,
+      estadoRecebido?.balcoes,
       estadoRecebido?.itens,
       estadoRecebido?.tickets,
       estadoRecebido?.fechamentos,

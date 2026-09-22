@@ -33,6 +33,7 @@ function dadosBase(): Dados {
       {
         organizacao_id: "valhalla",
         mesa_id: 1,
+        atendimento_id: null,
         status: "livre",
         ativa: false,
         pessoasFixas: 0,
@@ -45,6 +46,7 @@ function dadosBase(): Dados {
       {
         organizacao_id: "valhalla",
         mesa_id: 2,
+        atendimento_id: null,
         status: "livre",
         ativa: false,
         pessoasFixas: 0,
@@ -55,6 +57,7 @@ function dadosBase(): Dados {
         servicoIncluso: true,
       },
     ],
+    balcoes: [],
     pessoas: [],
     itens: [],
     tickets: [],
@@ -71,6 +74,7 @@ const depois: Dados = {
     mesa.mesa_id === 1
       ? {
           ...mesa,
+          atendimento_id: "at-offline-1",
           status: "ocupada",
           ativa: true,
           abertaEm: "2026-09-19T10:00:00.000Z",
@@ -138,7 +142,9 @@ const pendenteComItem: Dados = {
       organizacao_id: "valhalla",
       item_id: "i1",
       pedido_id: null,
+      atendimento_id: "at-offline-1",
       mesa_id: 1,
+      balcao_id: null,
       pessoa_id: "compartilhado-m1",
       produto_id: "p1",
       name: "Suco",

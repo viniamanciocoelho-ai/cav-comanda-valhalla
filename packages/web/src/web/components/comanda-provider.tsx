@@ -1,3 +1,4 @@
+/* oxlint-disable max-lines -- este provider mantém a transação operacional sincronizada. */
 // Estado operacional sincronizado com o backend.
 //
 // Desenho: um objeto `Dados` com todas as entidades e um espelho em `ref` para leitura
@@ -17,7 +18,6 @@ import {
 import {
   COMPARTILHADO,
   TAXA_SERVICO,
-  compartilhadoId,
   ehCompartilhado,
 } from "../lib/operacao";
 import { paraCentavos, paraReais, ratear } from "../lib/rateio";
@@ -47,12 +47,14 @@ import {
 import { useSessao } from "./sessao-provider";
 import type {
   ConfiguracaoImpressora,
+  Balcao,
   EncerramentoSemConsumo,
   Fechamento,
   Funcionario,
   Impressao,
   ItemStatus,
   LinhaDivisao,
+  LocalAtendimento,
   Mesa,
   MenuItem,
   MotivoSemConsumo,
@@ -60,6 +62,7 @@ import type {
   Perfil,
   Pessoa,
   ProdutoConfiguracao,
+  ResumoAtendimento,
   ResumoMesa,
   Ticket,
   TicketStatus,
@@ -73,6 +76,7 @@ export interface ToastMessage {
 
 export interface Dados {
   mesas: Mesa[];
+  balcoes: Balcao[];
   pessoas: Pessoa[];
   itens: OrderItem[];
   tickets: Ticket[];
@@ -113,6 +117,14 @@ interface NovoItem {
   observacao?: string;
 }
 
+interface NovoItemAtendimento {
+  atendimento_id: string;
+  pessoa_id: string;
+  produto: MenuItem;
+  quantidade?: number;
+  observacao?: string;
+}
+
 interface ComandaState {
   // quem esta operando
   perfilAtivo: Perfil;
@@ -143,6 +155,7 @@ interface ComandaState {
 
   // dados
   mesas: Mesa[];
+  balcoes: Balcao[];
   pessoas: Pessoa[];
   itens: OrderItem[];
   tickets: Ticket[];
@@ -153,11 +166,14 @@ interface ComandaState {
   // leitura
   pessoasDaMesa: (mesa_id: number) => Pessoa[];
   itensDaMesa: (mesa_id: number) => OrderItem[];
+  pessoasDoAtendimento: (atendimento_id: string) => Pessoa[];
+  itensDoAtendimento: (atendimento_id: string) => OrderItem[];
   nomeDaPessoa: (pessoa_id: string) => string;
   resumo: (mesa_id: number) => ResumoMesa;
+  resumoAtendimento: (atendimento_id: string) => ResumoAtendimento;
   avaliarSemConsumo: (mesa_id: number) => AvaliacaoSemConsumo;
   mesasDoGarcom: (funcionario_id: string) => Mesa[];
-  filaCaixa: Mesa[];
+  filaCaixa: LocalAtendimento[];
   filaAberta: number;
   prontosParaEntrega: number;
   contasEmAberto: number;
@@ -176,13 +192,17 @@ interface ComandaState {
 
   // escrita
   abrirMesa: (mesa_id: number) => void;
+  abrirBalcao: (balcao_id: number) => void;
   adicionarPessoa: (mesa_id: number, nome: string) => Pessoa | null;
   adicionarItem: (novo: NovoItem) => void;
+  adicionarItemAtendimento: (novo: NovoItemAtendimento) => void;
   alterarQuantidade: (item_id: string, delta: number) => void;
   definirObservacao: (item_id: string, texto: string) => void;
   removerItem: (item_id: string) => void;
   enviarPedido: (mesa_id: number) => number;
+  enviarPedidoAtendimento: (atendimento_id: string) => number;
   enviandoMesa: number | null;
+  enviandoAtendimento: string | null;
   avancarTicket: (ticket_id: string) => void;
   voltarTicket: (ticket_id: string) => void;
   marcarEntregue: (item_id: string) => void;
@@ -190,8 +210,13 @@ interface ComandaState {
   autorizarCancelamento: (item_id: string) => void;
   recusarCancelamento: (item_id: string) => void;
   solicitarFechamento: (mesa_id: number) => boolean;
+  solicitarFechamentoAtendimento: (atendimento_id: string) => boolean;
   alternarServico: (mesa_id: number) => void;
+  alternarServicoAtendimento: (atendimento_id: string) => void;
   fecharConta: (mesa_id: number, nfceSimulada: boolean) => Fechamento | null;
+  fecharAtendimento: (atendimento_id: string, nfceSimulada: boolean) => Fechamento | null;
+  fecharContaBalcao: (balcao_id: number) => Fechamento | null;
+  transferirBalcaoParaMesa: (balcao_id: number, mesa_id: number) => boolean;
   encerrarSemConsumo: (entrada: EntradaSemConsumo) => ResultadoSemConsumo;
   desfazerEncerramentoSemConsumo: (encerramento_id: string) => boolean;
   notificar: (text: string, tone?: ToastMessage["tone"]) => void;
@@ -223,9 +248,42 @@ const retorno: Record<TicketStatus, TicketStatus | null> = {
   entregue: null,
 };
 
+function localDaMesa(mesa: Mesa): LocalAtendimento | null {
+  if (!mesa.atendimento_id) return null;
+  return {
+    organizacao_id: mesa.organizacao_id,
+    atendimento_id: mesa.atendimento_id,
+    mesa_id: mesa.mesa_id,
+    balcao_id: null,
+    status: mesa.status,
+    ativa: mesa.ativa,
+    abertaEm: mesa.abertaEm,
+    garcom_id: mesa.garcom_id,
+    contaSolicitada: mesa.contaSolicitada,
+    servicoIncluso: mesa.servicoIncluso,
+  };
+}
+
+function localDoBalcao(balcao: Balcao): LocalAtendimento | null {
+  if (!balcao.atendimento_id) return null;
+  return {
+    organizacao_id: balcao.organizacao_id,
+    atendimento_id: balcao.atendimento_id,
+    mesa_id: null,
+    balcao_id: balcao.balcao_id,
+    status: balcao.status,
+    ativa: balcao.ativa,
+    abertaEm: balcao.abertaEm,
+    garcom_id: balcao.garcom_id,
+    contaSolicitada: balcao.contaSolicitada,
+    servicoIncluso: balcao.servicoIncluso,
+  };
+}
+
 function estadoInicial(): Dados {
   return {
     mesas: [],
+    balcoes: [],
     pessoas: [],
     itens: [],
     tickets: [],
@@ -235,7 +293,7 @@ function estadoInicial(): Dados {
   };
 }
 
-function podeOperarMesa(funcionario: Funcionario, mesa: Mesa): boolean {
+function podeOperarMesa(funcionario: Funcionario, mesa: Mesa | Balcao): boolean {
   return (
     funcionario.funcionario_perfil === "gerencia" ||
     (funcionario.funcionario_perfil === "garcom" &&
@@ -243,7 +301,7 @@ function podeOperarMesa(funcionario: Funcionario, mesa: Mesa): boolean {
   );
 }
 
-function podeLancarNaMesa(funcionario: Funcionario, mesa: Mesa): boolean {
+function podeLancarNaMesa(funcionario: Funcionario, mesa: Mesa | Balcao): boolean {
   return (
     funcionario.funcionario_perfil === "gerencia" ||
     (funcionario.funcionario_perfil === "garcom" && mesa.ativa)
@@ -323,16 +381,21 @@ export function avaliarSemConsumoDe(
   };
 }
 
-/** Itens que contam para a conta: cancelamento pedido segue contando ate a gerencia decidir. */
-function itensCobraveis(itens: OrderItem[], mesa_id: number): OrderItem[] {
-  return itens.filter((i) => i.mesa_id === mesa_id);
-}
-
-function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
-  const mesa = dados.mesas.find((m) => m.mesa_id === mesa_id);
-  const itens = itensCobraveis(dados.itens, mesa_id);
-  const pessoas = dados.pessoas.filter((p) => p.mesa_id === mesa_id);
-  const servicoIncluso = mesa?.servicoIncluso ?? true;
+function calcularResumoAtendimento(
+  dados: Dados,
+  atendimento_id: string,
+): ResumoAtendimento {
+  const mesa = dados.mesas.find((registro) => registro.atendimento_id === atendimento_id);
+  const balcao = dados.balcoes.find(
+    (registro) => registro.atendimento_id === atendimento_id,
+  );
+  const itens = dados.itens.filter(
+    (registro) => registro.atendimento_id === atendimento_id,
+  );
+  const pessoas = dados.pessoas.filter(
+    (registro) => registro.atendimento_id === atendimento_id,
+  );
+  const servicoIncluso = mesa?.servicoIncluso ?? balcao?.servicoIncluso ?? true;
 
   const centavosDoItem = (i: OrderItem) => paraCentavos(i.price) * i.quantidade;
   const subtotalCent = itens.reduce((soma, i) => soma + centavosDoItem(i), 0);
@@ -367,7 +430,9 @@ function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
   }
 
   return {
-    mesa_id,
+    atendimento_id,
+    mesa_id: mesa?.mesa_id ?? null,
+    balcao_id: balcao?.balcao_id ?? null,
     subtotal: paraReais(subtotalCent),
     servico: paraReais(servicoCent),
     total: paraReais(subtotalCent + servicoCent),
@@ -376,6 +441,35 @@ function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
     novos: itens.filter((i) => i.status === "novo").length,
     prontos: itens.filter((i) => i.status === "pronto").length,
     divisao,
+  };
+}
+
+function calcularResumo(dados: Dados, mesa_id: number): ResumoMesa {
+  const mesa = dados.mesas.find((registro) => registro.mesa_id === mesa_id);
+  if (!mesa?.atendimento_id) {
+    return {
+      mesa_id,
+      subtotal: 0,
+      servico: 0,
+      total: 0,
+      servicoIncluso: mesa?.servicoIncluso ?? true,
+      itens: 0,
+      novos: 0,
+      prontos: 0,
+      divisao: [],
+    };
+  }
+  const resumo = calcularResumoAtendimento(dados, mesa.atendimento_id);
+  return {
+    mesa_id,
+    subtotal: resumo.subtotal,
+    servico: resumo.servico,
+    total: resumo.total,
+    servicoIncluso: resumo.servicoIncluso,
+    itens: resumo.itens,
+    novos: resumo.novos,
+    prontos: resumo.prontos,
+    divisao: resumo.divisao,
   };
 }
 
@@ -414,6 +508,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const drenandoFila = useRef(false);
   const agendamentoDreno = useRef<number | null>(null);
   const [enviandoMesa, setEnviandoMesa] = useState<number | null>(null);
+  const [enviandoAtendimento, setEnviandoAtendimento] = useState<string | null>(null);
   const avisosImpressao = useRef(new Set<string>());
   const consultaRemota = useRef<
     Promise<Awaited<ReturnType<typeof client.comanda.estado>>> | null
@@ -423,7 +518,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const sequencia = useRef(0);
   // Pedidos ja enviados nesta sessao: guarda de idempotencia por pedido_id.
   const pedidosEnviados = useRef<Set<string>>(new Set());
-  const travaEnvio = useRef<Set<number>>(new Set());
+  const travaEnvio = useRef<Set<string>>(new Set());
   const travaTicket = useRef<Set<string>>(new Set());
   // Encerramento sem consumo: trava de clique e guarda por abertura ja encerrada.
   const travaSemConsumo = useRef<Set<number>>(new Set());
@@ -732,6 +827,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           travaEnvio.current.clear();
           travaTicket.current.clear();
           setEnviandoMesa(null);
+          setEnviandoAtendimento(null);
           setConectividade("offline");
           setToasts((atual) => [
             ...atual.slice(-2),
@@ -800,6 +896,18 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [dados.itens],
   );
 
+  const pessoasDoAtendimento = useCallback(
+    (atendimento_id: string) =>
+      dados.pessoas.filter((pessoa) => pessoa.atendimento_id === atendimento_id),
+    [dados.pessoas],
+  );
+
+  const itensDoAtendimento = useCallback(
+    (atendimento_id: string) =>
+      dados.itens.filter((item) => item.atendimento_id === atendimento_id),
+    [dados.itens],
+  );
+
   const nomeDaPessoa = useCallback(
     (pessoa_id: string) => {
       if (ehCompartilhado(pessoa_id)) return COMPARTILHADO;
@@ -818,6 +926,12 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [dadosParaResumo],
   );
 
+  const resumoAtendimento = useCallback(
+    (atendimento_id: string) =>
+      calcularResumoAtendimento(dadosParaResumo, atendimento_id),
+    [dadosParaResumo],
+  );
+
   const avaliarSemConsumo = useCallback(
     (mesa_id: number) => avaliarSemConsumoDe(dados, mesa_id, funcionarioAtivo),
     [dados, funcionarioAtivo],
@@ -830,8 +944,14 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   );
 
   const filaCaixa = useMemo(
-    () => dados.mesas.filter((m) => m.contaSolicitada),
-    [dados.mesas],
+    () =>
+      [
+        ...dados.mesas.map(localDaMesa),
+        ...dados.balcoes.map(localDoBalcao),
+      ].filter(
+        (local): local is LocalAtendimento => Boolean(local?.contaSolicitada),
+      ),
+    [dados.balcoes, dados.mesas],
   );
 
   const filaAberta = useMemo(
@@ -850,11 +970,17 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   );
 
   const contasEmAberto = useMemo(() => {
-    return dadosParaResumo.mesas.reduce((soma, mesa) => {
+    const totalMesas = dadosParaResumo.mesas.reduce((soma, mesa) => {
       if (mesa.status === "livre") return soma;
-      if (mesa.ativa) return soma + calcularResumo(dadosParaResumo, mesa.mesa_id).total;
+      if (mesa.ativa && mesa.atendimento_id) {
+        return soma + calcularResumoAtendimento(dadosParaResumo, mesa.atendimento_id).total;
+      }
       return soma + mesa.totalFixo;
     }, 0);
+    return dadosParaResumo.balcoes.reduce((soma, balcao) => {
+      if (!balcao.ativa || !balcao.atendimento_id) return soma;
+      return soma + calcularResumoAtendimento(dadosParaResumo, balcao.atendimento_id).total;
+    }, totalMesas);
   }, [dadosParaResumo]);
 
   // ----------------------------------------------------------------- escrita
@@ -872,6 +998,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       const agora = new Date().toISOString();
+      const atendimento_id = novoId("at");
       aplicar((prev) => ({
         ...prev,
         mesas: prev.mesas.map((m) =>
@@ -880,6 +1007,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
                 ...m,
                 status: "ocupada",
                 ativa: true,
+                atendimento_id,
                 abertaEm: agora,
                 pessoasFixas: 0,
                 totalFixo: 0,
@@ -894,7 +1022,55 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         ),
       }), "abrir_mesa");
     },
-    [aplicar, funcionarioAtivo],
+    [aplicar, funcionarioAtivo, novoId],
+  );
+
+  const abrirBalcao = useCallback(
+    (balcao_id: number) => {
+      const atual = espelho.current.balcoes.find(
+        (registro) => registro.balcao_id === balcao_id,
+      );
+      if (
+        !atual ||
+        atual.ativa ||
+        atual.status !== "livre" ||
+        (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
+          funcionarioAtivo.funcionario_perfil !== "garcom")
+      ) {
+        return;
+      }
+      const abertaEm = new Date().toISOString();
+      const atendimento_id = novoId("at");
+      const pessoa: Pessoa = {
+        pessoa_id: novoId("p"),
+        nome: "Cliente",
+        atendimento_id,
+        mesa_id: null,
+        balcao_id,
+      };
+      aplicar(
+        (prev) => ({
+          ...prev,
+          balcoes: prev.balcoes.map((balcao) =>
+            balcao.balcao_id === balcao_id
+              ? {
+                  ...balcao,
+                  atendimento_id,
+                  status: "ocupada",
+                  ativa: true,
+                  abertaEm,
+                  garcom_id: funcionarioAtivo.funcionario_id,
+                  contaSolicitada: false,
+                  servicoIncluso: true,
+                }
+              : balcao,
+          ),
+          pessoas: [...prev.pessoas, pessoa],
+        }),
+        "abrir_balcao",
+      );
+    },
+    [aplicar, funcionarioAtivo, novoId],
   );
 
   const adicionarPessoa = useCallback(
@@ -902,11 +1078,20 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const limpo = nome.trim();
       if (!limpo) return null;
       const mesa = espelho.current.mesas.find((m) => m.mesa_id === mesa_id);
-      if (!mesa || !mesa.ativa || !podeLancarNaMesa(funcionarioAtivo, mesa)) return null;
+      if (
+        !mesa ||
+        !mesa.ativa ||
+        !mesa.atendimento_id ||
+        !podeLancarNaMesa(funcionarioAtivo, mesa)
+      ) {
+        return null;
+      }
       const pessoa: Pessoa = {
         pessoa_id: `m${mesa_id}-${novoId("p")}`,
         nome: limpo,
+        atendimento_id: mesa.atendimento_id,
         mesa_id,
+        balcao_id: null,
       };
       aplicar((prev) => ({ ...prev, pessoas: [...prev.pessoas, pessoa] }));
       return pessoa;
@@ -914,13 +1099,29 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [aplicar, funcionarioAtivo, novoId],
   );
 
-  const adicionarItem = useCallback(
-    ({ mesa_id, pessoa_id, produto, quantidade = 1, observacao = "" }: NovoItem) => {
+  const adicionarItemAtendimento = useCallback(
+    ({
+      atendimento_id,
+      pessoa_id,
+      produto,
+      quantidade = 1,
+      observacao = "",
+    }: NovoItemAtendimento) => {
       const atual = espelho.current;
-      const mesa = atual.mesas.find((m) => m.mesa_id === mesa_id);
+      const mesa = atual.mesas.find(
+        (registro) => registro.atendimento_id === atendimento_id,
+      );
+      const balcao = atual.balcoes.find(
+        (registro) => registro.atendimento_id === atendimento_id,
+      );
+      const local = mesa ?? balcao;
       const destinatarioValido =
-        pessoa_id === compartilhadoId(mesa_id) ||
-        atual.pessoas.some((p) => p.mesa_id === mesa_id && p.pessoa_id === pessoa_id);
+        ehCompartilhado(pessoa_id) ||
+        atual.pessoas.some(
+          (pessoa) =>
+            pessoa.atendimento_id === atendimento_id &&
+            pessoa.pessoa_id === pessoa_id,
+        );
       const quantidadeValida = Number.isInteger(quantidade) && quantidade > 0 && quantidade <= 20;
       const produtoValido =
         Number.isFinite(produto.price) &&
@@ -933,10 +1134,11 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
             item.destino_producao === produto.destino_producao,
         );
       if (
-        !mesa ||
-        !mesa.ativa ||
-        mesa.contaSolicitada ||
-        !podeLancarNaMesa(funcionarioAtivo, mesa) ||
+        !local ||
+        !local.ativa ||
+        local.contaSolicitada ||
+        (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
+          funcionarioAtivo.funcionario_perfil !== "garcom") ||
         !destinatarioValido ||
         !quantidadeValida ||
         !produtoValido
@@ -950,10 +1152,10 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       aplicar((prev) => {
         // Mesmo produto, mesma pessoa, mesma observacao e ainda nao enviado: soma quantidade.
         const existente = prev.itens.find(
-          (i) =>
-            i.status === "novo" &&
-            i.mesa_id === mesa_id &&
-            i.pessoa_id === pessoa_id &&
+            (i) =>
+              i.status === "novo" &&
+              i.atendimento_id === atendimento_id &&
+              i.pessoa_id === pessoa_id &&
             i.produto_id === produto.produto_id &&
             i.observacao === obs,
         );
@@ -972,7 +1174,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           organizacao_id: organizacaoId,
           item_id: novoId("i"),
           pedido_id: null,
-          mesa_id,
+          atendimento_id,
+          mesa_id: mesa?.mesa_id ?? null,
+          balcao_id: balcao?.balcao_id ?? null,
           pessoa_id,
           produto_id: produto.produto_id,
           name: produto.name,
@@ -990,9 +1194,17 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         };
         return { ...prev, itens: [...prev.itens, item] };
       }, "alterar_comanda");
-
     },
     [aplicar, cardapioAtual, funcionarioAtivo, novoId, organizacaoId],
+  );
+
+  const adicionarItem = useCallback(
+    ({ mesa_id, ...novo }: NovoItem) => {
+      const mesa = espelho.current.mesas.find((registro) => registro.mesa_id === mesa_id);
+      if (!mesa?.atendimento_id) return;
+      adicionarItemAtendimento({ ...novo, atendimento_id: mesa.atendimento_id });
+    },
+    [adicionarItemAtendimento],
   );
 
   const alterarQuantidade = useCallback(
@@ -1001,13 +1213,19 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const agora = new Date().toISOString();
       aplicar((prev) => {
         const item = prev.itens.find((i) => i.item_id === item_id);
-        const mesa = item ? prev.mesas.find((m) => m.mesa_id === item.mesa_id) : null;
+        const local = item
+          ? prev.mesas.find((mesa) => mesa.atendimento_id === item.atendimento_id) ??
+            prev.balcoes.find(
+              (balcao) => balcao.atendimento_id === item.atendimento_id,
+            )
+          : null;
         if (
           !item ||
           item.status !== "novo" ||
-          !mesa ||
-          mesa.contaSolicitada ||
-          !podeLancarNaMesa(funcionarioAtivo, mesa)
+          !local ||
+          local.contaSolicitada ||
+          (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
+            funcionarioAtivo.funcionario_perfil !== "garcom")
         ) {
           return prev;
         }
@@ -1031,13 +1249,19 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const agora = new Date().toISOString();
       aplicar((prev) => {
         const item = prev.itens.find((i) => i.item_id === item_id);
-        const mesa = item ? prev.mesas.find((m) => m.mesa_id === item.mesa_id) : null;
+        const local = item
+          ? prev.mesas.find((mesa) => mesa.atendimento_id === item.atendimento_id) ??
+            prev.balcoes.find(
+              (balcao) => balcao.atendimento_id === item.atendimento_id,
+            )
+          : null;
         if (
           !item ||
           item.status !== "novo" ||
-          !mesa ||
-          mesa.contaSolicitada ||
-          !podeLancarNaMesa(funcionarioAtivo, mesa)
+          !local ||
+          local.contaSolicitada ||
+          (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
+            funcionarioAtivo.funcionario_perfil !== "garcom")
         ) {
           return prev;
         }
@@ -1056,13 +1280,19 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     (item_id: string) => {
       aplicar((prev) => {
         const item = prev.itens.find((i) => i.item_id === item_id);
-        const mesa = item ? prev.mesas.find((m) => m.mesa_id === item.mesa_id) : null;
+        const local = item
+          ? prev.mesas.find((mesa) => mesa.atendimento_id === item.atendimento_id) ??
+            prev.balcoes.find(
+              (balcao) => balcao.atendimento_id === item.atendimento_id,
+            )
+          : null;
         if (
           !item ||
           item.status !== "novo" ||
-          !mesa ||
-          mesa.contaSolicitada ||
-          !podeLancarNaMesa(funcionarioAtivo, mesa)
+          !local ||
+          local.contaSolicitada ||
+          (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
+            funcionarioAtivo.funcionario_perfil !== "garcom")
         ) {
           return prev;
         }
@@ -1072,39 +1302,47 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [aplicar, funcionarioAtivo],
   );
 
-  /**
-   * Envia os itens novos da mesa e abre uma ficha por destino (cozinha e bar separados).
-   * Idempotente: o mesmo conjunto de itens nunca gera dois pedidos, mesmo com duplo clique.
-   */
-  const enviarPedido = useCallback(
-    (mesa_id: number) => {
-      if (travaEnvio.current.has(mesa_id)) return 0;
-
+  const enviarPedidoAtendimento = useCallback(
+    (atendimento_id: string) => {
+      if (travaEnvio.current.has(atendimento_id)) return 0;
       const atual = espelho.current;
-      const mesa = atual.mesas.find((m) => m.mesa_id === mesa_id);
+      const mesa = atual.mesas.find(
+        (registro) => registro.atendimento_id === atendimento_id,
+      );
+      const balcao = atual.balcoes.find(
+        (registro) => registro.atendimento_id === atendimento_id,
+      );
+      const local = mesa ?? balcao;
       if (
-        !mesa ||
-        !mesa.ativa ||
-        mesa.contaSolicitada ||
-        !podeLancarNaMesa(funcionarioAtivo, mesa)
+        !local ||
+        !local.ativa ||
+        local.contaSolicitada ||
+        (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
+          funcionarioAtivo.funcionario_perfil !== "garcom")
       ) {
         return 0;
       }
-      const novos = atual.itens.filter((i) => i.mesa_id === mesa_id && i.status === "novo");
+      const novos = atual.itens.filter(
+        (item) => item.atendimento_id === atendimento_id && item.status === "novo",
+      );
       if (!novos.length) return 0;
 
-      const chave = `pd-m${mesa_id}-${novos
+      const chave = `pd-${atendimento_id}-${novos
         .map((i) => `${i.item_id}x${i.quantidade}`)
         .sort()
         .join(".")}`;
       if (pedidosEnviados.current.has(chave)) return 0;
       pedidosEnviados.current.add(chave);
 
-      travaEnvio.current.add(mesa_id);
-      setEnviandoMesa(mesa_id);
+      travaEnvio.current.add(atendimento_id);
+      setEnviandoAtendimento(atendimento_id);
+      if (mesa) setEnviandoMesa(mesa.mesa_id);
       window.setTimeout(() => {
-        travaEnvio.current.delete(mesa_id);
-        setEnviandoMesa((m) => (m === mesa_id ? null : m));
+        travaEnvio.current.delete(atendimento_id);
+        setEnviandoAtendimento((atualId) =>
+          atualId === atendimento_id ? null : atualId,
+        );
+        if (mesa) setEnviandoMesa((mesaId) => (mesaId === mesa.mesa_id ? null : mesaId));
       }, 500);
 
       const agora = new Date().toISOString();
@@ -1123,7 +1361,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         organizacao_id: organizacaoId,
         ticket_id: novoId("t"),
         pedido_id,
-        mesa_id,
+        atendimento_id,
+        mesa_id: mesa?.mesa_id ?? null,
+        balcao_id: balcao?.balcao_id ?? null,
         destino_producao: destino as Ticket["destino_producao"],
         status: "enviado",
         linhas: itens.map((item) => ({
@@ -1157,6 +1397,16 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       return novos.reduce((soma, i) => soma + i.quantidade, 0);
     },
     [aplicar, funcionarioAtivo, novoId, organizacaoId],
+  );
+
+  const enviarPedido = useCallback(
+    (mesa_id: number) => {
+      const mesa = espelho.current.mesas.find((registro) => registro.mesa_id === mesa_id);
+      return mesa?.atendimento_id
+        ? enviarPedidoAtendimento(mesa.atendimento_id)
+        : 0;
+    },
+    [enviarPedidoAtendimento],
   );
 
   /** Sincroniza a ficha e os itens da comanda vinculados a ela. */
@@ -1221,12 +1471,17 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const agora = new Date().toISOString();
       aplicar((prev) => {
         const item = prev.itens.find((i) => i.item_id === item_id);
-        const mesa = item ? prev.mesas.find((m) => m.mesa_id === item.mesa_id) : null;
+        const local = item
+          ? prev.mesas.find((mesa) => mesa.atendimento_id === item.atendimento_id) ??
+            prev.balcoes.find(
+              (balcao) => balcao.atendimento_id === item.atendimento_id,
+            )
+          : null;
         if (
           !item ||
           item.status !== "pronto" ||
-          !mesa ||
-          !podeOperarMesa(funcionarioAtivo, mesa)
+          !local ||
+          !podeOperarMesa(funcionarioAtivo, local)
         ) {
           return prev;
         }
@@ -1254,14 +1509,19 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const agora = new Date().toISOString();
       aplicar((prev) => {
         const item = prev.itens.find((i) => i.item_id === item_id);
-        const mesa = item ? prev.mesas.find((m) => m.mesa_id === item.mesa_id) : null;
+        const local = item
+          ? prev.mesas.find((mesa) => mesa.atendimento_id === item.atendimento_id) ??
+            prev.balcoes.find(
+              (balcao) => balcao.atendimento_id === item.atendimento_id,
+            )
+          : null;
         if (
           !item ||
           item.status === "novo" ||
           item.status === "entregue" ||
           item.status === "cancelamento_solicitado" ||
-          !mesa ||
-          !podeOperarMesa(funcionarioAtivo, mesa)
+          !local ||
+          !podeOperarMesa(funcionarioAtivo, local)
         ) {
           return prev;
         }
@@ -1352,19 +1612,30 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [aplicar, funcionarioAtivo],
   );
 
-  const solicitarFechamento = useCallback(
-    (mesa_id: number) => {
-      const mesa = espelho.current.mesas.find((m) => m.mesa_id === mesa_id);
+  const solicitarFechamentoAtendimento = useCallback(
+    (atendimento_id: string) => {
+      const atual = espelho.current;
+      const mesa = atual.mesas.find(
+        (registro) => registro.atendimento_id === atendimento_id,
+      );
+      const balcao = atual.balcoes.find(
+        (registro) => registro.atendimento_id === atendimento_id,
+      );
+      const local = mesa ?? balcao;
       if (
-        !mesa ||
-        !mesa.ativa ||
-        mesa.contaSolicitada ||
-        !podeOperarMesa(funcionarioAtivo, mesa)
+        !local ||
+        !local.ativa ||
+        local.contaSolicitada ||
+        !podeOperarMesa(funcionarioAtivo, local)
       ) {
         return false;
       }
-      const itens = espelho.current.itens.filter((item) => item.mesa_id === mesa_id);
-      const temPessoas = espelho.current.pessoas.some((p) => p.mesa_id === mesa_id);
+      const itens = atual.itens.filter(
+        (item) => item.atendimento_id === atendimento_id,
+      );
+      const temPessoas = atual.pessoas.some(
+        (pessoa) => pessoa.atendimento_id === atendimento_id,
+      );
       if (
         !itens.length ||
         !temPessoas ||
@@ -1377,7 +1648,14 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       aplicar((prev) => ({
         ...prev,
         mesas: prev.mesas.map((m) =>
-          m.mesa_id === mesa_id ? { ...m, contaSolicitada: true, status: "aguardando" } : m,
+          m.atendimento_id === atendimento_id
+            ? { ...m, contaSolicitada: true, status: "aguardando" }
+            : m,
+        ),
+        balcoes: prev.balcoes.map((registro) =>
+          registro.atendimento_id === atendimento_id
+            ? { ...registro, contaSolicitada: true, status: "aguardando" }
+            : registro,
         ),
       }), "solicitar_fechamento");
       return true;
@@ -1385,29 +1663,57 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [aplicar, funcionarioAtivo],
   );
 
-  const alternarServico = useCallback(
+  const solicitarFechamento = useCallback(
     (mesa_id: number) => {
+      const mesa = espelho.current.mesas.find((registro) => registro.mesa_id === mesa_id);
+      return mesa?.atendimento_id
+        ? solicitarFechamentoAtendimento(mesa.atendimento_id)
+        : false;
+    },
+    [solicitarFechamentoAtendimento],
+  );
+
+  const alternarServicoAtendimento = useCallback(
+    (atendimento_id: string) => {
       if (!podeOperarCaixa(funcionarioAtivo)) return;
-      const mesa = espelho.current.mesas.find((m) => m.mesa_id === mesa_id);
-      if (!mesa?.ativa) return;
+      const atual = espelho.current;
+      const local =
+        atual.mesas.find((registro) => registro.atendimento_id === atendimento_id) ??
+        atual.balcoes.find((registro) => registro.atendimento_id === atendimento_id);
+      if (!local?.ativa) return;
       aplicar((prev) => ({
         ...prev,
         mesas: prev.mesas.map((m) =>
-          m.mesa_id === mesa_id ? { ...m, servicoIncluso: !m.servicoIncluso } : m,
+          m.atendimento_id === atendimento_id
+            ? { ...m, servicoIncluso: !m.servicoIncluso }
+            : m,
+        ),
+        balcoes: prev.balcoes.map((registro) =>
+          registro.atendimento_id === atendimento_id
+            ? { ...registro, servicoIncluso: !registro.servicoIncluso }
+            : registro,
         ),
       }), "alterar_servico");
     },
     [aplicar, funcionarioAtivo],
   );
 
-  const fecharConta = useCallback(
-    (mesa_id: number, nfceSimulada: boolean) => {
+  const fecharAtendimento = useCallback(
+    (atendimento_id: string, nfceSimulada: boolean) => {
       const atual = espelho.current;
-      const mesa = atual.mesas.find((m) => m.mesa_id === mesa_id);
-      if (!mesa || !mesa.ativa || !podeOperarCaixa(funcionarioAtivo)) return null;
-      const calculo = calcularResumo(atual, mesa_id);
+      const mesa = atual.mesas.find(
+        (registro) => registro.atendimento_id === atendimento_id,
+      );
+      const balcao = atual.balcoes.find(
+        (registro) => registro.atendimento_id === atendimento_id,
+      );
+      const local = mesa ?? balcao;
+      if (!local || !local.ativa || !podeOperarCaixa(funcionarioAtivo)) return null;
+      const calculo = calcularResumoAtendimento(atual, atendimento_id);
       const temCancelamentoPendente = atual.itens.some(
-        (item) => item.mesa_id === mesa_id && item.status === "cancelamento_solicitado",
+        (item) =>
+          item.atendimento_id === atendimento_id &&
+          item.status === "cancelamento_solicitado",
       );
       if (
         !calculo.itens ||
@@ -1421,7 +1727,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const registro: Fechamento = {
         organizacao_id: organizacaoId,
         fechamento_id: novoId("f"),
-        mesa_id,
+        atendimento_id,
+        mesa_id: mesa?.mesa_id ?? null,
+        balcao_id: balcao?.balcao_id ?? null,
         hora: horaAgora(),
         subtotal: calculo.subtotal,
         servico: calculo.servico,
@@ -1434,12 +1742,13 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         })),
         nfce: nfceSimulada ? "simulada" : "nao_solicitada",
         funcionario_nome: funcionarioAtivo.funcionario_nome,
-        // O garcom vem de quem lancou os itens da mesa; a mesa de apoio pode nao ter nenhum.
         garcom_nome:
           atual.itens.find(
-            (i) => i.mesa_id === mesa_id && i.funcionario_perfil === "garcom",
+            (item) =>
+              item.atendimento_id === atendimento_id &&
+              item.funcionario_perfil === "garcom",
           )?.funcionario_nome ??
-          funcionariosAtuais.find((f) => f.funcionario_id === mesa.garcom_id)
+          funcionariosAtuais.find((f) => f.funcionario_id === local.garcom_id)
             ?.funcionario_nome ??
           null,
       };
@@ -1448,9 +1757,10 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         fechamentos: [registro, ...prev.fechamentos],
         mesas: prev.mesas.map((m) =>
-          m.mesa_id === mesa_id
+          m.atendimento_id === atendimento_id
             ? {
                 ...m,
+                atendimento_id: null,
                 status: "livre",
                 ativa: false,
                 contaSolicitada: false,
@@ -1462,18 +1772,148 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
               }
             : m,
         ),
-        itens: prev.itens.filter((i) => i.mesa_id !== mesa_id),
-        tickets: prev.tickets.filter((t) => t.mesa_id !== mesa_id),
-        pessoas: prev.pessoas.filter((p) => p.mesa_id !== mesa_id),
+        balcoes: prev.balcoes.map((registro) =>
+          registro.atendimento_id === atendimento_id
+            ? {
+                ...registro,
+                atendimento_id: null,
+                status: "livre",
+                ativa: false,
+                contaSolicitada: false,
+                abertaEm: null,
+                garcom_id: null,
+                servicoIncluso: true,
+              }
+            : registro,
+        ),
+        itens: prev.itens.filter(
+          (item) => item.atendimento_id !== atendimento_id,
+        ),
+        tickets: prev.tickets.filter(
+          (ticket) => ticket.atendimento_id !== atendimento_id,
+        ),
+        pessoas: prev.pessoas.filter(
+          (pessoa) => pessoa.atendimento_id !== atendimento_id,
+        ),
         anteriores: Object.fromEntries(
           Object.entries(prev.anteriores).filter(
-            ([item_id]) => !atual.itens.some((i) => i.mesa_id === mesa_id && i.item_id === item_id),
+            ([item_id]) =>
+              !atual.itens.some(
+                (item) =>
+                  item.atendimento_id === atendimento_id &&
+                  item.item_id === item_id,
+              ),
           ),
         ),
       }), "fechar_conta");
       return registro;
     },
     [aplicar, funcionarioAtivo, funcionariosAtuais, novoId, organizacaoId],
+  );
+
+  const fecharConta = useCallback(
+    (mesa_id: number, nfceSimulada: boolean) => {
+      const mesa = espelho.current.mesas.find((registro) => registro.mesa_id === mesa_id);
+      return mesa?.atendimento_id
+        ? fecharAtendimento(mesa.atendimento_id, nfceSimulada)
+        : null;
+    },
+    [fecharAtendimento],
+  );
+
+  const fecharContaBalcao = useCallback(
+    (balcao_id: number) => {
+      const balcao = espelho.current.balcoes.find(
+        (registro) => registro.balcao_id === balcao_id,
+      );
+      return balcao?.atendimento_id
+        ? fecharAtendimento(balcao.atendimento_id, false)
+        : null;
+    },
+    [fecharAtendimento],
+  );
+
+  const transferirBalcaoParaMesa = useCallback(
+    (balcao_id: number, mesa_id: number) => {
+      if (funcionarioAtivo.funcionario_perfil !== "gerencia") return false;
+      const atual = espelho.current;
+      const origem = atual.balcoes.find(
+        (registro) => registro.balcao_id === balcao_id,
+      );
+      const destino = atual.mesas.find((registro) => registro.mesa_id === mesa_id);
+      if (
+        !origem?.ativa ||
+        !origem.atendimento_id ||
+        origem.status !== "ocupada" ||
+        origem.contaSolicitada ||
+        !destino ||
+        destino.ativa ||
+        destino.status !== "livre" ||
+        destino.atendimento_id !== null
+      ) {
+        return false;
+      }
+      const atendimento_id = origem.atendimento_id;
+      aplicar(
+        (prev) => ({
+          ...prev,
+          balcoes: prev.balcoes.map((balcao) =>
+            balcao.balcao_id === balcao_id
+              ? {
+                  ...balcao,
+                  atendimento_id: null,
+                  status: "livre",
+                  ativa: false,
+                  abertaEm: null,
+                  garcom_id: null,
+                  contaSolicitada: false,
+                  servicoIncluso: true,
+                }
+              : balcao,
+          ),
+          mesas: prev.mesas.map((mesa) =>
+            mesa.mesa_id === mesa_id
+              ? {
+                  ...mesa,
+                  atendimento_id,
+                  status: "ocupada",
+                  ativa: true,
+                  abertaEm: origem.abertaEm,
+                  garcom_id: origem.garcom_id,
+                  contaSolicitada: false,
+                  servicoIncluso: origem.servicoIncluso,
+                }
+              : mesa,
+          ),
+          pessoas: prev.pessoas.map((pessoa) =>
+            pessoa.atendimento_id === atendimento_id
+              ? { ...pessoa, mesa_id, balcao_id: null }
+              : pessoa,
+          ),
+          itens: prev.itens.map((item) =>
+            item.atendimento_id === atendimento_id
+              ? { ...item, mesa_id, balcao_id: null }
+              : item,
+          ),
+          tickets: prev.tickets.map((ticket) =>
+            ticket.atendimento_id === atendimento_id
+              ? { ...ticket, mesa_id, balcao_id: null }
+              : ticket,
+          ),
+        }),
+        "transferir_balcao_mesa",
+      );
+      return true;
+    },
+    [aplicar, funcionarioAtivo],
+  );
+
+  const alternarServico = useCallback(
+    (mesa_id: number) => {
+      const mesa = espelho.current.mesas.find((registro) => registro.mesa_id === mesa_id);
+      if (mesa?.atendimento_id) alternarServicoAtendimento(mesa.atendimento_id);
+    },
+    [alternarServicoAtendimento],
   );
 
   /**
@@ -1525,7 +1965,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const registro: EncerramentoSemConsumo = {
         organizacao_id: organizacaoId,
         encerramento_id: novoId("sc"),
+        atendimento_id: mesa.atendimento_id ?? abertura_id,
         mesa_id,
+        balcao_id: null,
         abertura_id,
         encerrada_sem_consumo: true,
         motivo,
@@ -1754,6 +2196,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     reimprimir,
 
     mesas: dados.mesas,
+    balcoes: dados.balcoes,
     pessoas: dados.pessoas,
     itens: dados.itens,
     tickets: dados.tickets,
@@ -1763,8 +2206,11 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
 
     pessoasDaMesa,
     itensDaMesa,
+    pessoasDoAtendimento,
+    itensDoAtendimento,
     nomeDaPessoa,
     resumo,
+    resumoAtendimento,
     avaliarSemConsumo,
     mesasDoGarcom,
     filaCaixa,
@@ -1779,13 +2225,17 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     reconectar,
 
     abrirMesa,
+    abrirBalcao,
     adicionarPessoa,
     adicionarItem,
+    adicionarItemAtendimento,
     alterarQuantidade,
     definirObservacao,
     removerItem,
     enviarPedido,
+    enviarPedidoAtendimento,
     enviandoMesa,
+    enviandoAtendimento,
     avancarTicket,
     voltarTicket,
     marcarEntregue,
@@ -1793,8 +2243,13 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     autorizarCancelamento,
     recusarCancelamento,
     solicitarFechamento,
+    solicitarFechamentoAtendimento,
     alternarServico,
+    alternarServicoAtendimento,
     fecharConta,
+    fecharAtendimento,
+    fecharContaBalcao,
+    transferirBalcaoParaMesa,
     encerrarSemConsumo,
     desfazerEncerramentoSemConsumo,
     notificar,

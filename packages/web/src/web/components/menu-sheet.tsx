@@ -17,14 +17,35 @@ export function MenuSheet({
   open,
   onClose,
   mesa_id,
+  atendimento_id,
+  localRotulo,
 }: {
   open: boolean;
   onClose: () => void;
-  mesa_id: number;
+  mesa_id?: number;
+  atendimento_id?: string;
+  localRotulo?: string;
 }) {
-  const { pessoasDaMesa, adicionarPessoa, adicionarItem, notificar, cardapio } = useComanda();
-  const pessoas = pessoasDaMesa(mesa_id);
-  const compartilhado = compartilhadoId(mesa_id);
+  const {
+    pessoasDaMesa,
+    pessoasDoAtendimento,
+    adicionarPessoa,
+    adicionarItem,
+    adicionarItemAtendimento,
+    notificar,
+    cardapio,
+  } = useComanda();
+  const idAtendimento = atendimento_id ?? null;
+  const pessoas =
+    idAtendimento !== null
+      ? pessoasDoAtendimento(idAtendimento)
+      : mesa_id !== undefined
+        ? pessoasDaMesa(mesa_id)
+        : [];
+  const compartilhado = compartilhadoId(idAtendimento ?? mesa_id ?? "atendimento");
+  const rotulo =
+    localRotulo ?? (mesa_id !== undefined ? `Mesa ${mesaLabel(mesa_id)}` : "Atendimento");
+  const permiteAdicionarPessoa = mesa_id !== undefined;
 
   const [para, setPara] = useState<string>(pessoas[0]?.pessoa_id ?? compartilhado);
   const [categoria, setCategoria] = useState<(typeof categorias)[number]>("Todos");
@@ -52,6 +73,7 @@ export function MenuSheet({
   }
 
   function criarPessoa() {
+    if (mesa_id === undefined) return;
     const pessoa = adicionarPessoa(mesa_id, novaPessoa);
     if (!pessoa) {
       notificar("Informe o nome da pessoa antes de adicionar.", "atencao");
@@ -59,11 +81,23 @@ export function MenuSheet({
     }
     setNovaPessoa("");
     setPara(pessoa.pessoa_id);
-    notificar(`${pessoa.nome} entrou na Mesa ${mesaLabel(mesa_id)}.`, "sucesso");
+    notificar(`${pessoa.nome} entrou em ${rotulo}.`, "sucesso");
   }
 
   function adicionar(item: MenuItem) {
-    adicionarItem({ mesa_id, pessoa_id: destinoAtual, produto: item, quantidade, observacao });
+    if (idAtendimento !== null) {
+      adicionarItemAtendimento({
+        atendimento_id: idAtendimento,
+        pessoa_id: destinoAtual,
+        produto: item,
+        quantidade,
+        observacao,
+      });
+    } else if (mesa_id !== undefined) {
+      adicionarItem({ mesa_id, pessoa_id: destinoAtual, produto: item, quantidade, observacao });
+    } else {
+      return;
+    }
     setAdicionados((n) => n + quantidade);
     notificar(
       `${quantidade}× ${item.name} lançado para ${
@@ -87,7 +121,7 @@ export function MenuSheet({
       open={open}
       onClose={fechar}
       testId="dialogo-cardapio"
-      eyebrow={`Mesa ${mesaLabel(mesa_id)}`}
+      eyebrow={rotulo}
       title="Lançar item"
       hint="Escolha para quem é o item, ajuste quantidade e observação, depois toque no produto. O lançamento só vai para a produção quando você enviar o pedido."
       footer={
@@ -142,30 +176,32 @@ export function MenuSheet({
           </button>
         </div>
 
-        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <label className="sr-only" htmlFor="nova-pessoa">
-            Nome da nova pessoa
-          </label>
-          <input
-            id="nova-pessoa"
-            aria-label="Nome da nova pessoa"
-            value={novaPessoa}
-            onChange={(evento) => setNovaPessoa(evento.target.value)}
-            onKeyDown={(evento) => {
-              if (evento.key === "Enter") {
-                evento.preventDefault();
-                criarPessoa();
-              }
-            }}
-            placeholder="Adicionar pessoa na mesa"
-            data-testid="campo-nova-pessoa"
-            className="border-line bg-surface text-parchment placeholder:text-muted focus:border-gold/70 min-h-11 min-w-0 flex-1 rounded-md border px-3 text-[14px] outline-none"
-          />
-          <Action variante="tracejada" onClick={criarPessoa} data-testid="adicionar-pessoa">
-            <UserPlus className="size-4" />
-            Incluir
-          </Action>
-        </div>
+        {permiteAdicionarPessoa ? (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <label className="sr-only" htmlFor="nova-pessoa">
+              Nome da nova pessoa
+            </label>
+            <input
+              id="nova-pessoa"
+              aria-label="Nome da nova pessoa"
+              value={novaPessoa}
+              onChange={(evento) => setNovaPessoa(evento.target.value)}
+              onKeyDown={(evento) => {
+                if (evento.key === "Enter") {
+                  evento.preventDefault();
+                  criarPessoa();
+                }
+              }}
+              placeholder="Adicionar pessoa na mesa"
+              data-testid="campo-nova-pessoa"
+              className="border-line bg-surface text-parchment placeholder:text-muted focus:border-gold/70 min-h-11 min-w-0 flex-1 rounded-md border px-3 text-[14px] outline-none"
+            />
+            <Action variante="tracejada" onClick={criarPessoa} data-testid="adicionar-pessoa">
+              <UserPlus className="size-4" />
+              Incluir
+            </Action>
+          </div>
+        ) : null}
       </fieldset>
 
       <div className="mb-5 grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-end">

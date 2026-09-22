@@ -24,6 +24,7 @@ import type {
 
 export const DESTINOS_IMPRESSAO: DestinoImpressao[] = ["bar", "cozinha", "caixa"];
 export const TIMEOUT_IMPRESSORA_MS = 3_000;
+const RECUPERAR_IMPRESSAO_LOCAL_APOS_MS = 120_000;
 
 type Transacao = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -42,12 +43,15 @@ interface LinhaFila {
   destino: DestinoImpressao;
   tipo: TipoImpressao;
   referenciaId: string;
-  mesaId: number;
+  atendimentoId: string;
+  mesaId: number | null;
+  balcaoId: number | null;
   texto: string;
   largura: number;
   status: StatusImpressao;
   tentativas: number;
   ultimoErro: string | null;
+  impressoEm: string | null;
   criadoEm: string;
   atualizadoEm: string;
 }
@@ -98,12 +102,15 @@ export function impressoesPublicas(linhas: LinhaFila[]): Impressao[] {
     destino: linha.destino,
     tipo: linha.tipo,
     referencia_id: linha.referenciaId,
+    atendimento_id: linha.atendimentoId,
     mesa_id: linha.mesaId,
+    balcao_id: linha.balcaoId,
     status: linha.status,
     tentativas: linha.tentativas,
     ultimo_erro: linha.ultimoErro,
     texto: linha.texto,
     largura: larguraValida(linha.largura),
+    impresso_em: linha.impressoEm,
     criado_em: linha.criadoEm,
     atualizado_em: linha.atualizadoEm,
   }));
@@ -157,7 +164,9 @@ function textoTeste(destino: DestinoImpressao, largura: 58 | 80) {
     organizacao_id: "teste",
     ticket_id: "teste",
     pedido_id: "teste",
+    atendimento_id: "teste",
     mesa_id: 1,
+    balcao_id: null,
     destino_producao: destino === "caixa" ? "bar" : destino,
     status: "enviado",
     linhas: [
@@ -180,7 +189,15 @@ function textoTeste(destino: DestinoImpressao, largura: 58 | 80) {
   if (destino === "caixa") {
     return montarRecibo(
       1,
-      [{ pessoa_id: "teste", nome: "Teste de impressão", mesa_id: 1 }],
+      [
+        {
+          pessoa_id: "teste",
+          nome: "Teste de impressão",
+          atendimento_id: "teste",
+          mesa_id: 1,
+          balcao_id: null,
+        },
+      ],
       [],
       [{ pessoa_id: "teste", pessoa: "Teste de impressão", individual: 0, rateio: 0, servico: 0, total: 0 }],
       largura,
@@ -254,7 +271,9 @@ export async function enfileirarImpressoesTx(
     destino: DestinoImpressao,
     tipo: TipoImpressao,
     referenciaId: string,
-    mesaId: number,
+    atendimentoId: string,
+    mesaId: number | null,
+    balcaoId: number | null,
     texto: string,
   ) => {
     const configuracao = porDestino.get(destino);
@@ -270,13 +289,16 @@ export async function enfileirarImpressoesTx(
         destino,
         tipo,
         referenciaId,
+        atendimentoId,
         mesaId,
+        balcaoId,
         texto,
         largura: larguraValida(configuracao?.largura ?? larguraPadrao),
         status,
         tentativas: 0,
         ultimoErro:
           status === "sem_configuracao" ? "Nenhuma impressora de rede ativa neste destino." : null,
+        impressoEm: null,
         criadoEm: new Date().toISOString(),
         atualizadoEm: new Date().toISOString(),
       })
@@ -293,7 +315,9 @@ export async function enfileirarImpressoesTx(
       ticket.destino_producao,
       "ficha",
       ticket.ticket_id,
+      ticket.atendimento_id,
       ticket.mesa_id,
+      ticket.balcao_id,
       montarFichaProducao(ticket, larguraValida(configuracao?.largura ?? larguraPadrao)),
     );
   }
@@ -301,15 +325,21 @@ export async function enfileirarImpressoesTx(
   for (const fechamento of estado.fechamentos) {
     if (fechamentoIds.has(fechamento.fechamento_id)) continue;
     const configuracao = porDestino.get("caixa");
-    const pessoas = anterior.pessoas.filter((pessoa) => pessoa.mesa_id === fechamento.mesa_id);
-    const itens = anterior.itens.filter((item) => item.mesa_id === fechamento.mesa_id);
+    const pessoas = anterior.pessoas.filter(
+      (pessoa) => pessoa.atendimento_id === fechamento.atendimento_id,
+    );
+    const itens = anterior.itens.filter(
+      (item) => item.atendimento_id === fechamento.atendimento_id,
+    );
     await inserir(
       "caixa",
       "recibo",
       fechamento.fechamento_id,
+      fechamento.atendimento_id,
       fechamento.mesa_id,
+      fechamento.balcao_id,
       montarRecibo(
-        fechamento.mesa_id,
+        fechamento,
         pessoas,
         itens,
         divisaoDoFechamento(fechamento, pessoas, itens),
@@ -384,6 +414,7 @@ async function processarUmaImpressao(organizacaoId: string, impressaoId: string)
           status: "impresso",
           ultimoErro: null,
           tentativas: fila.tentativas + 1,
+          impressoEm: new Date().toISOString(),
           atualizadoEm: new Date().toISOString(),
         })
         .where(
@@ -425,10 +456,110 @@ export function processarFila(organizacaoId: string, ids?: string[]) {
           ids?.length ? inArray(filaImpressoes.impressaoId, ids) : undefined,
         ),
       );
-    await Promise.all(
-      pendentes.map((linha) => processarUmaImpressao(organizacaoId, linha.impressaoId)),
-    );
+    for (const linha of pendentes) {
+      await processarUmaImpressao(organizacaoId, linha.impressaoId);
+    }
   })().catch(() => undefined);
+}
+
+export async function reservarImpressaoLocal(
+  organizacaoId: string,
+  destino: DestinoImpressao,
+) {
+  const candidatas = await db
+    .select()
+    .from(filaImpressoes)
+    .where(
+      and(
+        eq(filaImpressoes.organizacaoId, organizacaoId),
+        eq(filaImpressoes.destino, destino),
+        eq(filaImpressoes.tipo, "ficha"),
+        inArray(filaImpressoes.status, [
+          "pendente",
+          "falhou",
+          "sem_configuracao",
+          "imprimindo",
+        ]),
+      ),
+    )
+    .orderBy(filaImpressoes.criadoEm)
+    .limit(10);
+
+  for (const fila of candidatas) {
+    const atualizadaEm = Date.parse(fila.atualizadoEm);
+    if (
+      fila.status === "imprimindo" &&
+      Number.isFinite(atualizadaEm) &&
+      Date.now() - atualizadaEm < RECUPERAR_IMPRESSAO_LOCAL_APOS_MS
+    ) {
+      continue;
+    }
+    const agora = new Date().toISOString();
+    const reservado = await db
+      .update(filaImpressoes)
+      .set({
+        status: "imprimindo",
+        ultimoErro: null,
+        tentativas: fila.tentativas + 1,
+        atualizadoEm: agora,
+      })
+      .where(
+        and(
+          eq(filaImpressoes.organizacaoId, organizacaoId),
+          eq(filaImpressoes.impressaoId, fila.impressaoId),
+          eq(filaImpressoes.status, fila.status),
+          eq(filaImpressoes.atualizadoEm, fila.atualizadoEm),
+        ),
+      );
+    if (reservado.rowsAffected !== 1) continue;
+    return impressoesPublicas([
+      {
+        ...fila,
+        status: "imprimindo",
+        tentativas: fila.tentativas + 1,
+        ultimoErro: null,
+        atualizadoEm: agora,
+      },
+    ])[0];
+  }
+  return null;
+}
+
+export async function concluirImpressaoLocal(
+  organizacaoId: string,
+  impressaoId: string,
+  sucesso: boolean,
+  erro?: string,
+) {
+  const agora = new Date().toISOString();
+  const resultado = await db
+    .update(filaImpressoes)
+    .set({
+      status: sucesso ? "impresso" : "falhou",
+      ultimoErro: sucesso ? null : (erro?.trim().slice(0, 240) || "Impressão local não confirmada."),
+      impressoEm: sucesso ? agora : null,
+      atualizadoEm: agora,
+    })
+    .where(
+      and(
+        eq(filaImpressoes.organizacaoId, organizacaoId),
+        eq(filaImpressoes.impressaoId, impressaoId),
+        eq(filaImpressoes.status, "imprimindo"),
+      ),
+    );
+  if (resultado.rowsAffected === 1) return { ok: true };
+
+  const [atual] = await db
+    .select({ status: filaImpressoes.status })
+    .from(filaImpressoes)
+    .where(
+      and(
+        eq(filaImpressoes.organizacaoId, organizacaoId),
+        eq(filaImpressoes.impressaoId, impressaoId),
+      ),
+    )
+    .limit(1);
+  return { ok: atual?.status === "impresso" };
 }
 
 export async function solicitarReimpressao(

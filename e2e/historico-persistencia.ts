@@ -37,6 +37,7 @@ let resultado = await cliente.comanda.persistir({
             ...mesa,
             status: "ocupada" as const,
             ativa: true,
+            atendimento_id: "at-historico-1",
             abertaEm: instante,
             garcom_id: funcionario.funcionario_id,
           }
@@ -48,12 +49,20 @@ let resultado = await cliente.comanda.persistir({
 leitura = await cliente.comanda.estado();
 const produto = leitura.cardapio.find((item) => item.produto_id === "m1");
 assert.ok(produto);
-const pessoa = { pessoa_id: "m1-historico", nome: "Histórico", mesa_id: 1 };
+const pessoa = {
+  pessoa_id: "m1-historico",
+  nome: "Histórico",
+  atendimento_id: "at-historico-1",
+  mesa_id: 1,
+  balcao_id: null,
+};
 const item = {
   organizacao_id: leitura.organizacaoId,
   item_id: "i-historico",
   pedido_id: null,
+  atendimento_id: "at-historico-1",
   mesa_id: 1,
+  balcao_id: null,
   pessoa_id: pessoa.pessoa_id,
   produto_id: produto.produto_id,
   name: produto.name,
@@ -86,7 +95,9 @@ const ticket = {
   organizacao_id: leitura.organizacaoId,
   ticket_id: "t-historico",
   pedido_id: pedidoId,
+  atendimento_id: "at-historico-1",
   mesa_id: 1,
+  balcao_id: null,
   destino_producao: produto.destino_producao,
   status: "enviado" as const,
   linhas: [
@@ -183,6 +194,7 @@ resultado = await cliente.comanda.persistir({
             ...mesa,
             status: "livre" as const,
             ativa: false,
+            atendimento_id: null,
             abertaEm: null,
             garcom_id: null,
             contaSolicitada: false,
@@ -199,7 +211,9 @@ resultado = await cliente.comanda.persistir({
       {
         organizacao_id: leitura.organizacaoId,
         fechamento_id: fechamentoId,
+        atendimento_id: "at-historico-1",
         mesa_id: 1,
+        balcao_id: null,
         hora: "20:00",
         subtotal: 15,
         servico: 1.5,
@@ -234,6 +248,7 @@ await cliente.comanda.persistir({
             ...mesa,
             status: "ocupada" as const,
             ativa: true,
+            atendimento_id: "at-historico-2",
             abertaEm: new Date().toISOString(),
             garcom_id: funcionario.funcionario_id,
           }

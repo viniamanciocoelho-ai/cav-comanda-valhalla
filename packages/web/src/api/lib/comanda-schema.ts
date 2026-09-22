@@ -39,17 +39,33 @@ const pessoaSchema = z
   .object({
     pessoa_id: z.string().trim().min(1).max(120),
     nome: z.string().trim().min(1).max(120),
-    mesa_id: z.number().int().min(1).max(200),
+    atendimento_id: z.string().trim().min(1).max(160),
+    mesa_id: z.number().int().min(1).max(200).nullable(),
+    balcao_id: z.number().int().min(1).max(20).nullable(),
   })
   .strict();
 const mesaSchema = z
   .object({
     organizacao_id: organizacaoIdSchema,
     mesa_id: z.number().int().min(1).max(200),
+    atendimento_id: z.string().trim().min(1).max(160).nullable(),
     status: z.enum(["livre", "ocupada", "aguardando"]),
     ativa: z.boolean(),
     pessoasFixas: z.number().int().min(0).max(200),
     totalFixo: dinheiroSchema(1_000_000),
+    abertaEm: z.string().nullable(),
+    garcom_id: z.string().trim().max(80).nullable(),
+    contaSolicitada: z.boolean(),
+    servicoIncluso: z.boolean(),
+  })
+  .strict();
+const balcaoSchema = z
+  .object({
+    organizacao_id: organizacaoIdSchema,
+    balcao_id: z.number().int().min(1).max(20),
+    atendimento_id: z.string().trim().min(1).max(160).nullable(),
+    status: z.enum(["livre", "ocupada", "aguardando"]),
+    ativa: z.boolean(),
     abertaEm: z.string().nullable(),
     garcom_id: z.string().trim().max(80).nullable(),
     contaSolicitada: z.boolean(),
@@ -61,7 +77,9 @@ const itemSchema = z
     organizacao_id: organizacaoIdSchema,
     item_id: z.string().trim().min(1).max(120),
     pedido_id: z.string().trim().max(120).nullable(),
-    mesa_id: z.number().int().min(1).max(200),
+    atendimento_id: z.string().trim().min(1).max(160),
+    mesa_id: z.number().int().min(1).max(200).nullable(),
+    balcao_id: z.number().int().min(1).max(20).nullable(),
     pessoa_id: z.string().trim().min(1).max(120),
     produto_id: z.string().trim().min(1).max(80),
     name: z.string().trim().min(1).max(120),
@@ -93,7 +111,9 @@ const ticketSchema = z
     organizacao_id: organizacaoIdSchema,
     ticket_id: z.string().trim().min(1).max(120),
     pedido_id: z.string().trim().min(1).max(120),
-    mesa_id: z.number().int().min(1).max(200),
+    atendimento_id: z.string().trim().min(1).max(160),
+    mesa_id: z.number().int().min(1).max(200).nullable(),
+    balcao_id: z.number().int().min(1).max(20).nullable(),
     destino_producao: destinoSchema,
     status: ticketStatusSchema,
     linhas: z.array(ticketLinhaSchema).max(100),
@@ -109,7 +129,9 @@ const fechamentoSchema = z
   .object({
     organizacao_id: organizacaoIdSchema,
     fechamento_id: z.string().trim().min(1).max(120),
-    mesa_id: z.number().int().min(1).max(200),
+    atendimento_id: z.string().trim().min(1).max(160),
+    mesa_id: z.number().int().min(1).max(200).nullable(),
+    balcao_id: z.number().int().min(1).max(20).nullable(),
     hora: z.string().min(1).max(80),
     subtotal: dinheiroSchema(1_000_000),
     servico: dinheiroSchema(1_000_000),
@@ -135,7 +157,9 @@ const encerramentoSchema = z
   .object({
     organizacao_id: organizacaoIdSchema,
     encerramento_id: z.string().trim().min(1).max(120),
-    mesa_id: z.number().int().min(1).max(200),
+    atendimento_id: z.string().trim().min(1).max(160),
+    mesa_id: z.number().int().min(1).max(200).nullable(),
+    balcao_id: z.number().int().min(1).max(20).nullable(),
     abertura_id: z.string().trim().min(1).max(160),
     encerrada_sem_consumo: z.literal(true),
     motivo: motivoSemConsumoSchema,
@@ -154,6 +178,7 @@ const encerramentoSchema = z
 export const estadoPersistidoSchema = z
   .object({
     mesas: z.array(mesaSchema).max(200),
+    balcoes: z.array(balcaoSchema).max(20),
     pessoas: z.array(pessoaSchema).max(1_000),
     itens: z.array(itemSchema).max(2_000),
     tickets: z.array(ticketSchema).max(400),
@@ -174,6 +199,7 @@ export const estadoPersistidoSchema = z
       }
     };
     verificarUnicos(estado.mesas, (mesa) => mesa.mesa_id, "mesas");
+    verificarUnicos(estado.balcoes, (balcao) => balcao.balcao_id, "balcões");
     verificarUnicos(estado.pessoas, (pessoa) => pessoa.pessoa_id, "pessoas");
     verificarUnicos(estado.itens, (item) => item.item_id, "itens");
     verificarUnicos(estado.tickets, (ticket) => ticket.ticket_id, "tickets");
@@ -188,21 +214,57 @@ export const estadoPersistidoSchema = z
       "encerramentos",
     );
 
-    const mesas = new Set(estado.mesas.map((mesa) => mesa.mesa_id));
+    const mesas = new Map(estado.mesas.map((mesa) => [mesa.mesa_id, mesa]));
+    const balcoes = new Map(estado.balcoes.map((balcao) => [balcao.balcao_id, balcao]));
     const pessoas = new Map(
       estado.pessoas.map((pessoa) => [pessoa.pessoa_id, pessoa]),
     );
     const itens = new Map(estado.itens.map((item) => [item.item_id, item]));
-    if (estado.pessoas.some((pessoa) => !mesas.has(pessoa.mesa_id))) {
-      contexto.addIssue({ code: "custom", message: "Pessoa referencia mesa inexistente." });
+    const localValido = (registro: {
+      atendimento_id: string;
+      mesa_id: number | null;
+      balcao_id: number | null;
+    }) => {
+      if ((registro.mesa_id === null) === (registro.balcao_id === null)) return false;
+      const local =
+        registro.mesa_id !== null
+          ? mesas.get(registro.mesa_id)
+          : balcoes.get(registro.balcao_id as number);
+      return local?.ativa && local.atendimento_id === registro.atendimento_id;
+    };
+    const vinculoEstruturalValido = (registro: {
+      atendimento_id: string;
+      mesa_id: number | null;
+      balcao_id: number | null;
+    }) =>
+      registro.atendimento_id.length > 0 &&
+      (registro.mesa_id === null) !== (registro.balcao_id === null);
+    for (const fechamento of estado.fechamentos) {
+      if (!vinculoEstruturalValido(fechamento)) {
+        contexto.addIssue({
+          code: "custom",
+          message: "Fechamento referencia local inválido.",
+        });
+      }
+    }
+    for (const encerramento of estado.encerramentos) {
+      if (!vinculoEstruturalValido(encerramento)) {
+        contexto.addIssue({ code: "custom", message: "Encerramento sem consumo possui local inválido." });
+      }
+    }
+    if (estado.pessoas.some((pessoa) => !localValido(pessoa))) {
+      contexto.addIssue({ code: "custom", message: "Pessoa referencia atendimento inexistente." });
     }
     if (
       estado.itens.some((item) => {
         const pessoa = pessoas.get(item.pessoa_id);
         return (
-          !mesas.has(item.mesa_id) ||
-          (item.pessoa_id !== compartilhadoId(item.mesa_id) &&
-            (!pessoa || pessoa.mesa_id !== item.mesa_id))
+          !localValido(item) ||
+          (item.pessoa_id !== compartilhadoId(item.atendimento_id) &&
+            (!pessoa ||
+              pessoa.atendimento_id !== item.atendimento_id ||
+              pessoa.mesa_id !== item.mesa_id ||
+              pessoa.balcao_id !== item.balcao_id))
         );
       })
     ) {
@@ -215,13 +277,15 @@ export const estadoPersistidoSchema = z
         const item = itens.get(itemId);
         return (
           item &&
+          item.atendimento_id === ticket.atendimento_id &&
           item.mesa_id === ticket.mesa_id &&
+          item.balcao_id === ticket.balcao_id &&
           item.pedido_id === ticket.pedido_id &&
           item.destino_producao === ticket.destino_producao
         );
       });
       if (
-        !mesas.has(ticket.mesa_id) ||
+        !localValido(ticket) ||
         ids.size !== ticket.itemIds.length ||
         idsLinhas.size !== ticket.linhas.length ||
         ticket.itemIds.length !== ticket.linhas.length ||

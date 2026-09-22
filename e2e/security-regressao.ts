@@ -12,6 +12,7 @@ import type {
 const mesa: Mesa = {
   organizacao_id: "valhalla",
   mesa_id: 1,
+  atendimento_id: "at-security-1",
   status: "ocupada",
   ativa: true,
   pessoasFixas: 0,
@@ -27,6 +28,8 @@ const item: OrderItem = {
   item_id: "i-1",
   pedido_id: null,
   mesa_id: 1,
+  atendimento_id: "at-security-1",
+  balcao_id: null,
   pessoa_id: "m1-ana",
   produto_id: "m1",
   name: "CHOOP PIL 500ML",
@@ -45,11 +48,14 @@ const item: OrderItem = {
 
 const base: EstadoPersistido = {
   mesas: [mesa],
+  balcoes: [],
   pessoas: [
     {
       pessoa_id: "m1-ana",
       nome: "Ana",
       mesa_id: 1,
+      atendimento_id: "at-security-1",
+      balcao_id: null,
     },
   ],
   itens: [item],
@@ -69,6 +75,8 @@ const fechamentoMalicioso: Fechamento = {
   organizacao_id: "valhalla",
   fechamento_id: "f-malicioso",
   mesa_id: 1,
+  atendimento_id: "at-security-1",
+  balcao_id: null,
   hora: "20:00",
   subtotal: 15,
   servico: 0,
@@ -82,6 +90,7 @@ const fechamentoMalicioso: Fechamento = {
 
 const mesaLivre: Mesa = {
   ...mesa,
+  atendimento_id: null,
   status: "livre",
   ativa: false,
   abertaEm: null,
@@ -102,6 +111,7 @@ assert.doesNotThrow(
         mesas: [
           {
             ...mesaLivre,
+            atendimento_id: "at-security-open",
             status: "ocupada",
             ativa: true,
             abertaEm: new Date().toISOString(),
@@ -123,6 +133,7 @@ assert.throws(
         mesas: [
           {
             ...mesaLivre,
+            atendimento_id: "at-security-open",
             status: "ocupada",
             ativa: true,
             abertaEm: new Date().toISOString(),
@@ -144,6 +155,8 @@ const encerramento = {
   organizacao_id: "valhalla",
   encerramento_id: "e-1",
   mesa_id: 1,
+  atendimento_id: "at-security-1",
+  balcao_id: null,
   abertura_id: `ab-m1-${mesa.abertaEm}`,
   encerrada_sem_consumo: true as const,
   motivo: "desistiram" as const,
@@ -250,6 +263,8 @@ const ticketAnterior: Ticket = {
   ticket_id: "t-1",
   pedido_id: "pd-1",
   mesa_id: 1,
+  atendimento_id: "at-security-1",
+  balcao_id: null,
   destino_producao: "bar",
   status: "enviado",
   linhas: [
@@ -432,6 +447,7 @@ const estadoFechado = {
   mesas: [
     {
       ...mesa,
+      atendimento_id: null,
       status: "livre" as const,
       ativa: false,
       abertaEm: null,

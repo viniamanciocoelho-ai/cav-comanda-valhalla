@@ -64,6 +64,7 @@ export const mesas = sqliteTable(
   {
     organizacaoId: text("organizacao_id").notNull(),
     mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id"),
     status: text("status", { enum: ["livre", "ocupada", "aguardando"] }).notNull(),
     ativa: integer("ativa", { mode: "boolean" }).notNull(),
     pessoasFixas: integer("pessoas_fixas").notNull(),
@@ -79,17 +80,40 @@ export const mesas = sqliteTable(
   ],
 );
 
+export const balcoes = sqliteTable(
+  "balcoes",
+  {
+    organizacaoId: text("organizacao_id").notNull(),
+    balcaoId: integer("balcao_id").notNull(),
+    atendimentoId: text("atendimento_id"),
+    status: text("status", { enum: ["livre", "ocupada", "aguardando"] }).notNull(),
+    ativa: integer("ativa", { mode: "boolean" }).notNull(),
+    abertaEm: text("aberta_em"),
+    garcomId: text("garcom_id"),
+    contaSolicitada: integer("conta_solicitada", { mode: "boolean" }).notNull(),
+    servicoIncluso: integer("servico_incluso", { mode: "boolean" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.organizacaoId, table.balcaoId] }),
+    index("balcoes_org_status").on(table.organizacaoId, table.status),
+  ],
+);
+
 export const pessoasDaComanda = sqliteTable(
   "pessoas_da_comanda",
   {
     organizacaoId: text("organizacao_id").notNull(),
     pessoaId: text("pessoa_id").notNull(),
-    mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id").notNull(),
+    mesaId: integer("mesa_id"),
+    balcaoId: integer("balcao_id"),
     nome: text("nome").notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.organizacaoId, table.pessoaId] }),
     index("pessoas_org_mesa").on(table.organizacaoId, table.mesaId),
+    index("pessoas_org_balcao").on(table.organizacaoId, table.balcaoId),
+    index("pessoas_org_atendimento").on(table.organizacaoId, table.atendimentoId),
   ],
 );
 
@@ -99,7 +123,9 @@ export const itensPedido = sqliteTable(
     organizacaoId: text("organizacao_id").notNull(),
     itemId: text("item_id").notNull(),
     pedidoId: text("pedido_id"),
-    mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id").notNull(),
+    mesaId: integer("mesa_id"),
+    balcaoId: integer("balcao_id"),
     pessoaId: text("pessoa_id").notNull(),
     produtoId: text("produto_id").notNull(),
     nome: text("nome").notNull(),
@@ -125,6 +151,8 @@ export const itensPedido = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.organizacaoId, table.itemId] }),
     index("itens_org_mesa").on(table.organizacaoId, table.mesaId),
+    index("itens_org_balcao").on(table.organizacaoId, table.balcaoId),
+    index("itens_org_atendimento").on(table.organizacaoId, table.atendimentoId),
     index("itens_org_status").on(table.organizacaoId, table.status),
   ],
 );
@@ -135,7 +163,9 @@ export const fichasProducao = sqliteTable(
     organizacaoId: text("organizacao_id").notNull(),
     ticketId: text("ticket_id").notNull(),
     pedidoId: text("pedido_id").notNull(),
-    mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id").notNull(),
+    mesaId: integer("mesa_id"),
+    balcaoId: integer("balcao_id"),
     destinoProducao: text("destino_producao", { enum: ["cozinha", "bar"] }).notNull(),
     status: text("status", { enum: ["enviado", "preparando", "pronto", "entregue"] }).notNull(),
     linhasJson: text("linhas_json").notNull(),
@@ -148,6 +178,7 @@ export const fichasProducao = sqliteTable(
   },
   (table) => [
     primaryKey({ columns: [table.organizacaoId, table.ticketId] }),
+    index("fichas_org_atendimento").on(table.organizacaoId, table.atendimentoId),
     index("fichas_org_status").on(table.organizacaoId, table.status),
   ],
 );
@@ -157,7 +188,9 @@ export const fechamentos = sqliteTable(
   {
     organizacaoId: text("organizacao_id").notNull(),
     fechamentoId: text("fechamento_id").notNull(),
-    mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id").notNull(),
+    mesaId: integer("mesa_id"),
+    balcaoId: integer("balcao_id"),
     hora: text("hora").notNull(),
     subtotalCentavos: integer("subtotal_centavos").notNull(),
     servicoCentavos: integer("servico_centavos").notNull(),
@@ -171,6 +204,8 @@ export const fechamentos = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.organizacaoId, table.fechamentoId] }),
     index("fechamentos_org_mesa").on(table.organizacaoId, table.mesaId),
+    index("fechamentos_org_balcao").on(table.organizacaoId, table.balcaoId),
+    index("fechamentos_org_atendimento").on(table.organizacaoId, table.atendimentoId),
   ],
 );
 
@@ -180,7 +215,9 @@ export const itensFechamento = sqliteTable(
     organizacaoId: text("organizacao_id").notNull(),
     fechamentoId: text("fechamento_id").notNull(),
     itemId: text("item_id").notNull(),
-    mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id").notNull(),
+    mesaId: integer("mesa_id"),
+    balcaoId: integer("balcao_id"),
     produtoId: text("produto_id").notNull(),
     nome: text("nome").notNull(),
     precoCentavos: integer("preco_centavos").notNull(),
@@ -194,6 +231,10 @@ export const itensFechamento = sqliteTable(
       table.organizacaoId,
       table.fechamentoId,
     ),
+    index("itens_fechamento_org_atendimento").on(
+      table.organizacaoId,
+      table.atendimentoId,
+    ),
   ],
 );
 
@@ -203,7 +244,9 @@ export const cancelamentosAutorizados = sqliteTable(
     organizacaoId: text("organizacao_id").notNull(),
     cancelamentoId: text("cancelamento_id").notNull(),
     itemId: text("item_id").notNull(),
-    mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id").notNull(),
+    mesaId: integer("mesa_id"),
+    balcaoId: integer("balcao_id"),
     produtoId: text("produto_id").notNull(),
     nome: text("nome").notNull(),
     precoCentavos: integer("preco_centavos").notNull(),
@@ -219,6 +262,10 @@ export const cancelamentosAutorizados = sqliteTable(
       table.organizacaoId,
       table.autorizadoEm,
     ),
+    index("cancelamentos_org_atendimento").on(
+      table.organizacaoId,
+      table.atendimentoId,
+    ),
   ],
 );
 
@@ -227,7 +274,9 @@ export const encerramentosSemConsumo = sqliteTable(
   {
     organizacaoId: text("organizacao_id").notNull(),
     encerramentoId: text("encerramento_id").notNull(),
-    mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id").notNull(),
+    mesaId: integer("mesa_id"),
+    balcaoId: integer("balcao_id"),
     aberturaId: text("abertura_id").notNull(),
     motivo: text("motivo").notNull(),
     observacao: text("observacao").notNull(),
@@ -245,6 +294,10 @@ export const encerramentosSemConsumo = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.organizacaoId, table.encerramentoId] }),
     uniqueIndex("encerramentos_org_abertura").on(table.organizacaoId, table.aberturaId),
+    index("encerramentos_org_atendimento").on(
+      table.organizacaoId,
+      table.atendimentoId,
+    ),
   ],
 );
 
@@ -312,7 +365,9 @@ export const filaImpressoes = sqliteTable(
     destino: text("destino", { enum: ["bar", "cozinha", "caixa"] }).notNull(),
     tipo: text("tipo", { enum: ["ficha", "recibo"] }).notNull(),
     referenciaId: text("referencia_id").notNull(),
-    mesaId: integer("mesa_id").notNull(),
+    atendimentoId: text("atendimento_id").notNull(),
+    mesaId: integer("mesa_id"),
+    balcaoId: integer("balcao_id"),
     texto: text("texto").notNull(),
     largura: integer("largura").notNull(),
     status: text("status", {
@@ -320,6 +375,7 @@ export const filaImpressoes = sqliteTable(
     }).notNull(),
     tentativas: integer("tentativas").notNull().default(0),
     ultimoErro: text("ultimo_erro"),
+    impressoEm: text("impresso_em"),
     criadoEm: text("criado_em").notNull(),
     atualizadoEm: text("atualizado_em").notNull(),
   },

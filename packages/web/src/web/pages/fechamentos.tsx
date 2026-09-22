@@ -9,7 +9,7 @@ import { Metric, SectionHeading, StatusPill } from "../components/ui/pieces";
 import {
   duracao,
   hora,
-  mesaLabel,
+  localLabel,
   money,
   motivoSemConsumoLabel,
   perfilNome,
@@ -61,7 +61,7 @@ export default function FechamentosPage() {
                     </span>
                     <div className="min-w-0">
                       <p className="font-display text-parchment text-[15px] tracking-[0.06em] uppercase">
-                        Mesa {mesaLabel(registro.mesa_id)}
+                        {localLabel(registro)}
                       </p>
                       <p className="text-muted text-[12px]">
                         Fechada às {registro.hora} no caixa por {registro.funcionario_nome}
@@ -172,7 +172,7 @@ export default function FechamentosPage() {
               <li
                 key={registro.encerramento_id}
                 className="border-line bg-surface flex flex-wrap items-center gap-3 rounded-md border px-4 py-3"
-                data-testid={`sem-consumo-${registro.mesa_id}`}
+                data-testid={`sem-consumo-${registro.encerramento_id}`}
               >
                 <span
                   className="border-line bg-surface-2 text-gold grid size-10 shrink-0 place-items-center rounded-md border"
@@ -182,7 +182,7 @@ export default function FechamentosPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-parchment text-[15px] tracking-[0.06em] uppercase">
-                    Mesa {mesaLabel(registro.mesa_id)}
+                    {localLabel(registro)}
                   </p>
                   <p className="text-muted text-[12px] leading-relaxed">
                     {motivoSemConsumoLabel[registro.motivo]}

@@ -7,7 +7,7 @@ import { client } from "../lib/api";
 import {
   destinoLabel,
   hora,
-  mesaLabel,
+  localLabel,
   moneyCentavos,
   motivoSemConsumoLabel,
 } from "../lib/format";
@@ -215,7 +215,7 @@ export default function RelatorioDiarioPage() {
                         className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-[13px]"
                       >
                         <span className="font-display text-parchment">
-                          Mesa {mesaLabel(fechamento.mesa_id)}
+                          {localLabel(fechamento)}
                         </span>
                         <span className="text-muted">
                           {fechamento.hora} · {fechamento.funcionario_nome}
@@ -238,7 +238,7 @@ export default function RelatorioDiarioPage() {
                 {relatorio.encerramentosSemConsumo.map((registro) => (
                   <li key={registro.encerramento_id} className="px-4 py-3 text-[13px]">
                     <p className="text-parchment">
-                      Mesa {mesaLabel(registro.mesa_id)} ·{" "}
+                       {localLabel(registro)} ·{" "}
                       {motivoSemConsumoLabel[registro.motivo]}
                     </p>
                     <p className="text-muted mt-1">
@@ -261,7 +261,7 @@ export default function RelatorioDiarioPage() {
                     className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-[13px]"
                   >
                     <span className="text-parchment">
-                      Mesa {mesaLabel(cancelamento.mesa_id)} · {cancelamento.quantidade}x{" "}
+                       {localLabel(cancelamento)} · {cancelamento.quantidade}x{" "}
                       {cancelamento.nome}
                     </span>
                     <span className="text-muted">

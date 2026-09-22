@@ -128,6 +128,7 @@ const aberto = {
           ...mesa,
           status: "ocupada" as const,
           ativa: true,
+          atendimento_id: "at-fase1-api",
           abertaEm: new Date().toISOString(),
           garcom_id: logins[1].funcionario.funcionario_id,
         }
@@ -146,12 +147,20 @@ const aposAbertura = await garcom.comanda.estado();
 const agora = new Date().toISOString();
 const produto = aposAbertura.cardapio.find((registro) => registro.produto_id === "m1");
 assert.ok(produto);
-const pessoa = { pessoa_id: "m1-api", nome: "Teste API", mesa_id: 1 };
+const pessoa = {
+  pessoa_id: "m1-api",
+  nome: "Teste API",
+  atendimento_id: "at-fase1-api",
+  mesa_id: 1,
+  balcao_id: null,
+};
 const item = {
   organizacao_id: "valhalla",
   item_id: "i-api",
   pedido_id: null,
+  atendimento_id: "at-fase1-api",
   mesa_id: 1,
+  balcao_id: null,
   pessoa_id: pessoa.pessoa_id,
   produto_id: produto.produto_id,
   name: produto.name,
@@ -200,7 +209,9 @@ const enviado = await garcom.comanda.persistir({
         organizacao_id: "valhalla",
         ticket_id: "t-api",
         pedido_id: pedidoId,
+        atendimento_id: "at-fase1-api",
         mesa_id: 1,
+        balcao_id: null,
         destino_producao: produto.destino_producao,
         status: "enviado" as const,
         linhas: [

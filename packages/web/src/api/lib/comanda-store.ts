@@ -3,6 +3,7 @@ import { db } from "../database";
 import {
   cardapio as cardapioTabela,
   auditoria,
+  balcoes,
   cancelamentosAutorizados,
   encerramentosSemConsumo,
   fechamentos,
@@ -28,6 +29,7 @@ import {
 import { ratear } from "../../web/lib/rateio";
 import type {
   ConfiguracaoImpressora,
+  Balcao,
   EncerramentoSemConsumo,
   Fechamento,
   Funcionario,
@@ -57,6 +59,7 @@ import {
 
 export interface EstadoPersistido {
   mesas: Mesa[];
+  balcoes: Balcao[];
   pessoas: Pessoa[];
   itens: OrderItem[];
   tickets: Ticket[];
@@ -100,6 +103,20 @@ function centavos(valor: number) {
   return Math.round(valor * 100);
 }
 
+function criarBalcaoVazio(organizacaoId: string, balcaoId: number): Balcao {
+  return {
+    organizacao_id: organizacaoId,
+    balcao_id: balcaoId,
+    atendimento_id: null,
+    status: "livre",
+    ativa: false,
+    abertaEm: null,
+    garcom_id: null,
+    contaSolicitada: false,
+    servicoIncluso: true,
+  };
+}
+
 function statusAnteriorValido(status: OrderItem["status"] | undefined) {
   return status && status !== "cancelamento_solicitado" ? status : null;
 }
@@ -108,19 +125,27 @@ function validarFechamentoFinanceiro(
   anterior: EstadoPersistido,
   fechamento: Fechamento,
 ) {
-  const itens = anterior.itens.filter((item) => item.mesa_id === fechamento.mesa_id);
-  const pessoas = anterior.pessoas.filter((pessoa) => pessoa.mesa_id === fechamento.mesa_id);
-  const mesa = anterior.mesas.find((registro) => registro.mesa_id === fechamento.mesa_id);
+  const itens = anterior.itens.filter(
+    (item) => item.atendimento_id === fechamento.atendimento_id,
+  );
+  const pessoas = anterior.pessoas.filter(
+    (pessoa) => pessoa.atendimento_id === fechamento.atendimento_id,
+  );
+  const local =
+    fechamento.mesa_id !== null
+      ? anterior.mesas.find((registro) => registro.mesa_id === fechamento.mesa_id)
+      : anterior.balcoes.find((registro) => registro.balcao_id === fechamento.balcao_id);
   if (
-    !mesa?.ativa ||
+    !local?.ativa ||
+    local.atendimento_id !== fechamento.atendimento_id ||
     !itens.length ||
     !pessoas.length ||
-    fechamento.servicoIncluso !== mesa.servicoIncluso ||
+    fechamento.servicoIncluso !== local.servicoIncluso ||
     itens.some(
       (item) => item.status === "novo" || item.status === "cancelamento_solicitado",
     )
   ) {
-    throw new Error("Fechamento inválido para a mesa.");
+    throw new Error("Fechamento inválido para o atendimento.");
   }
 
   const centavosDoItem = (item: OrderItem) => centavos(item.price) * item.quantidade;
@@ -229,6 +254,27 @@ export async function garantirOrganizacaoPadrao() {
     .limit(1);
   if (existente.length) {
     await sincronizarCardapioReal(existente[0].organizacaoId);
+    if (bootstrap.codigo === ORGANIZACAO_PADRAO) {
+      for (let balcaoId = 1; balcaoId <= 4; balcaoId += 1) {
+        const balcao = criarBalcaoVazio(existente[0].organizacaoId, balcaoId);
+        await db
+          .insert(balcoes)
+          .values({
+            organizacaoId: balcao.organizacao_id,
+            balcaoId: balcao.balcao_id,
+            atendimentoId: balcao.atendimento_id,
+            status: balcao.status,
+            ativa: balcao.ativa,
+            abertaEm: balcao.abertaEm,
+            garcomId: balcao.garcom_id,
+            contaSolicitada: balcao.contaSolicitada,
+            servicoIncluso: balcao.servicoIncluso,
+          })
+          .onConflictDoNothing({
+            target: [balcoes.organizacaoId, balcoes.balcaoId],
+          });
+      }
+    }
     return {
       codigo: bootstrap.codigo,
       organizacaoId: existente[0].organizacaoId,
@@ -264,11 +310,18 @@ export async function garantirOrganizacaoPadrao() {
     const mesasVazias = Array.from({ length: 15 }, (_, indice) =>
       criarMesaVazia(ORGANIZACAO_PADRAO, indice + 1),
     );
+    const balcoesVazios =
+      bootstrap.codigo === ORGANIZACAO_PADRAO
+        ? Array.from({ length: 4 }, (_, indice) =>
+            criarBalcaoVazio(ORGANIZACAO_PADRAO, indice + 1),
+          )
+        : [];
     await gravarEstadoTx(
       tx,
       ORGANIZACAO_PADRAO,
       {
         mesas: mesasVazias,
+        balcoes: balcoesVazios,
         pessoas: [],
         itens: [],
         tickets: [],
@@ -296,6 +349,7 @@ async function gravarEstadoTx(
   substituirHistorico = false,
 ) {
   await tx.delete(mesas).where(eq(mesas.organizacaoId, organizacaoId));
+  await tx.delete(balcoes).where(eq(balcoes.organizacaoId, organizacaoId));
   await tx.delete(pessoasDaComanda).where(eq(pessoasDaComanda.organizacaoId, organizacaoId));
   await tx.delete(itensPedido).where(eq(itensPedido.organizacaoId, organizacaoId));
   await tx.delete(fichasProducao).where(eq(fichasProducao.organizacaoId, organizacaoId));
@@ -311,6 +365,7 @@ async function gravarEstadoTx(
       estado.mesas.map((mesa) => ({
         organizacaoId,
         mesaId: mesa.mesa_id,
+        atendimentoId: mesa.atendimento_id,
         status: mesa.status,
         ativa: mesa.ativa,
         pessoasFixas: mesa.pessoasFixas,
@@ -322,12 +377,29 @@ async function gravarEstadoTx(
       })),
     );
   }
+  if (estado.balcoes.length) {
+    await tx.insert(balcoes).values(
+      estado.balcoes.map((balcao) => ({
+        organizacaoId,
+        balcaoId: balcao.balcao_id,
+        atendimentoId: balcao.atendimento_id,
+        status: balcao.status,
+        ativa: balcao.ativa,
+        abertaEm: balcao.abertaEm,
+        garcomId: balcao.garcom_id,
+        contaSolicitada: balcao.contaSolicitada,
+        servicoIncluso: balcao.servicoIncluso,
+      })),
+    );
+  }
   if (estado.pessoas.length) {
     await tx.insert(pessoasDaComanda).values(
       estado.pessoas.map((pessoa) => ({
         organizacaoId,
         pessoaId: pessoa.pessoa_id,
+        atendimentoId: pessoa.atendimento_id,
         mesaId: pessoa.mesa_id,
+        balcaoId: pessoa.balcao_id,
         nome: pessoa.nome,
       })),
     );
@@ -338,7 +410,9 @@ async function gravarEstadoTx(
         organizacaoId,
         itemId: item.item_id,
         pedidoId: item.pedido_id,
+        atendimentoId: item.atendimento_id,
         mesaId: item.mesa_id,
+        balcaoId: item.balcao_id,
         pessoaId: item.pessoa_id,
         produtoId: item.produto_id,
         nome: item.name,
@@ -363,7 +437,9 @@ async function gravarEstadoTx(
         organizacaoId,
         ticketId: ticket.ticket_id,
         pedidoId: ticket.pedido_id,
+        atendimentoId: ticket.atendimento_id,
         mesaId: ticket.mesa_id,
+        balcaoId: ticket.balcao_id,
         destinoProducao: ticket.destino_producao,
         status: ticket.status,
         linhasJson: JSON.stringify(ticket.linhas),
@@ -391,7 +467,9 @@ async function gravarEstadoTx(
       fechamentosParaInserir.map((fechamento) => ({
         organizacaoId,
         fechamentoId: fechamento.fechamento_id,
+        atendimentoId: fechamento.atendimento_id,
         mesaId: fechamento.mesa_id,
+        balcaoId: fechamento.balcao_id,
         hora: fechamento.hora,
         subtotalCentavos: centavos(fechamento.subtotal),
         servicoCentavos: centavos(fechamento.servico),
@@ -419,7 +497,9 @@ async function gravarEstadoTx(
       encerramentosParaInserir.map((registro) => ({
         organizacaoId,
         encerramentoId: registro.encerramento_id,
+        atendimentoId: registro.atendimento_id,
         mesaId: registro.mesa_id,
+        balcaoId: registro.balcao_id,
         aberturaId: registro.abertura_id,
         motivo: registro.motivo,
         observacao: registro.observacao,
@@ -575,6 +655,7 @@ export async function lerEstado(organizacaoId: string) {
   const [
     [versao],
     linhasMesas,
+    linhasBalcoes,
     linhasPessoas,
     linhasItens,
     linhasTickets,
@@ -588,6 +669,7 @@ export async function lerEstado(organizacaoId: string) {
   ] = await db.batch([
     db.select().from(versoesEstado).where(eq(versoesEstado.organizacaoId, organizacaoId)).limit(1),
     db.select().from(mesas).where(eq(mesas.organizacaoId, organizacaoId)),
+    db.select().from(balcoes).where(eq(balcoes.organizacaoId, organizacaoId)),
     db.select().from(pessoasDaComanda).where(eq(pessoasDaComanda.organizacaoId, organizacaoId)),
     db.select().from(itensPedido).where(eq(itensPedido.organizacaoId, organizacaoId)),
     db.select().from(fichasProducao).where(eq(fichasProducao.organizacaoId, organizacaoId)),
@@ -616,6 +698,7 @@ export async function lerEstado(organizacaoId: string) {
     mesas: linhasMesas.map((mesa) => ({
       organizacao_id: organizacaoId,
       mesa_id: mesa.mesaId,
+      atendimento_id: mesa.atendimentoId,
       status: mesa.status,
       ativa: mesa.ativa,
       pessoasFixas: mesa.pessoasFixas,
@@ -625,16 +708,31 @@ export async function lerEstado(organizacaoId: string) {
       contaSolicitada: mesa.contaSolicitada,
       servicoIncluso: mesa.servicoIncluso,
     })),
+    balcoes: linhasBalcoes.map((balcao) => ({
+      organizacao_id: organizacaoId,
+      balcao_id: balcao.balcaoId,
+      atendimento_id: balcao.atendimentoId,
+      status: balcao.status,
+      ativa: balcao.ativa,
+      abertaEm: balcao.abertaEm,
+      garcom_id: balcao.garcomId,
+      contaSolicitada: balcao.contaSolicitada,
+      servicoIncluso: balcao.servicoIncluso,
+    })),
     pessoas: linhasPessoas.map((pessoa) => ({
       pessoa_id: pessoa.pessoaId,
       nome: pessoa.nome,
+      atendimento_id: pessoa.atendimentoId,
       mesa_id: pessoa.mesaId,
+      balcao_id: pessoa.balcaoId,
     })),
     itens: linhasItens.map((item) => ({
       organizacao_id: organizacaoId,
       item_id: item.itemId,
       pedido_id: item.pedidoId,
+      atendimento_id: item.atendimentoId,
       mesa_id: item.mesaId,
+      balcao_id: item.balcaoId,
       pessoa_id: item.pessoaId,
       produto_id: item.produtoId,
       name: item.nome,
@@ -654,7 +752,9 @@ export async function lerEstado(organizacaoId: string) {
       organizacao_id: organizacaoId,
       ticket_id: ticket.ticketId,
       pedido_id: ticket.pedidoId,
+      atendimento_id: ticket.atendimentoId,
       mesa_id: ticket.mesaId,
+      balcao_id: ticket.balcaoId,
       destino_producao: ticket.destinoProducao,
       status: ticket.status,
       linhas: JSON.parse(ticket.linhasJson) as Ticket["linhas"],
@@ -668,7 +768,9 @@ export async function lerEstado(organizacaoId: string) {
     fechamentos: linhasFechamentos.map((fechamento) => ({
       organizacao_id: organizacaoId,
       fechamento_id: fechamento.fechamentoId,
+      atendimento_id: fechamento.atendimentoId,
       mesa_id: fechamento.mesaId,
+      balcao_id: fechamento.balcaoId,
       hora: fechamento.hora,
       subtotal: reais(fechamento.subtotalCentavos),
       servico: reais(fechamento.servicoCentavos),
@@ -682,7 +784,9 @@ export async function lerEstado(organizacaoId: string) {
     encerramentos: linhasEncerramentos.map((registro) => ({
       organizacao_id: organizacaoId,
       encerramento_id: registro.encerramentoId,
+      atendimento_id: registro.atendimentoId,
       mesa_id: registro.mesaId,
+      balcao_id: registro.balcaoId,
       abertura_id: registro.aberturaId,
       encerrada_sem_consumo: true,
       motivo: registro.motivo as EncerramentoSemConsumo["motivo"],
@@ -754,15 +858,25 @@ export function validarTransicao(
     serializar(anterior[chave]) === serializar(proximo[chave]);
   const colecoesPermitidas: Record<string, (keyof EstadoPersistido)[]> = {
     abrir_mesa: ["mesas"],
+    abrir_balcao: ["balcoes", "pessoas"],
+    transferir_balcao_mesa: ["mesas", "balcoes", "pessoas", "itens", "tickets"],
     alterar_comanda: ["pessoas", "itens"],
     enviar_pedido: ["itens", "tickets"],
     mover_producao: ["itens", "tickets"],
     entregar_item: ["itens", "tickets"],
     solicitar_cancelamento: ["itens", "anteriores"],
     decidir_cancelamento: ["itens", "tickets", "anteriores"],
-    solicitar_fechamento: ["mesas"],
-    alterar_servico: ["mesas"],
-    fechar_conta: ["mesas", "pessoas", "itens", "tickets", "fechamentos", "anteriores"],
+    solicitar_fechamento: ["mesas", "balcoes"],
+    alterar_servico: ["mesas", "balcoes"],
+    fechar_conta: [
+      "mesas",
+      "balcoes",
+      "pessoas",
+      "itens",
+      "tickets",
+      "fechamentos",
+      "anteriores",
+    ],
     encerrar_sem_consumo: ["mesas", "pessoas", "itens", "encerramentos"],
     desfazer_sem_consumo: ["mesas", "pessoas", "itens", "encerramentos"],
   };
@@ -804,7 +918,7 @@ export function validarTransicao(
     }
     return alterados;
   };
-  const validarForaDaMesa = <T extends { mesa_id: number }>(
+  const validarForaDaMesa = <T extends { mesa_id: number | null }>(
     antes: T[],
     depois: T[],
     mesaId: number,
@@ -819,6 +933,29 @@ export function validarTransicao(
 
   const mapaAnterior = new Map(anterior.mesas.map((mesa) => [mesa.mesa_id, mesa]));
   const mapaProximo = new Map(proximo.mesas.map((mesa) => [mesa.mesa_id, mesa]));
+  const mapaBalcoesAnterior = new Map(
+    anterior.balcoes.map((balcao) => [balcao.balcao_id, balcao]),
+  );
+  const mapaBalcoesProximo = new Map(
+    proximo.balcoes.map((balcao) => [balcao.balcao_id, balcao]),
+  );
+  type Vinculo = {
+    atendimento_id: string;
+    mesa_id: number | null;
+    balcao_id: number | null;
+  };
+  const mesmoVinculo = (a: Vinculo, b: Vinculo) =>
+    a.atendimento_id === b.atendimento_id &&
+    a.mesa_id === b.mesa_id &&
+    a.balcao_id === b.balcao_id;
+  const atendimentoAtivo = (estado: EstadoPersistido, vinculo: Vinculo) => {
+    if ((vinculo.mesa_id === null) === (vinculo.balcao_id === null)) return null;
+    const local =
+      vinculo.mesa_id !== null
+        ? estado.mesas.find((mesa) => mesa.mesa_id === vinculo.mesa_id)
+        : estado.balcoes.find((balcao) => balcao.balcao_id === vinculo.balcao_id);
+    return local?.ativa && local.atendimento_id === vinculo.atendimento_id ? local : null;
+  };
 
   if (acao === "abrir_mesa") {
     const alteradas = validarCamposComuns(
@@ -828,6 +965,7 @@ export function validarTransicao(
       [
         "status",
         "ativa",
+        "atendimento_id",
         "abertaEm",
         "garcom_id",
         "contaSolicitada",
@@ -844,8 +982,10 @@ export function validarTransicao(
       !depois ||
       antes.status !== "livre" ||
       antes.ativa ||
+      antes.atendimento_id !== null ||
       depois.status !== "ocupada" ||
       !depois.ativa ||
+      !depois.atendimento_id ||
       !depois.abertaEm ||
       depois.garcom_id !== funcionario.funcionario_id ||
       depois.contaSolicitada ||
@@ -855,6 +995,171 @@ export function validarTransicao(
     ) {
       throw new Error("Abertura de mesa inválida.");
     }
+  }
+
+  if (acao === "abrir_balcao") {
+    const alterados = validarCamposComuns(
+      anterior.balcoes as unknown as Record<string, unknown>[],
+      proximo.balcoes as unknown as Record<string, unknown>[],
+      "balcao_id",
+      [
+        "status",
+        "ativa",
+        "atendimento_id",
+        "abertaEm",
+        "garcom_id",
+        "contaSolicitada",
+        "servicoIncluso",
+      ],
+    );
+    const antes =
+      alterados.length === 1 ? mapaBalcoesAnterior.get(Number(alterados[0])) : null;
+    const depois =
+      alterados.length === 1 ? mapaBalcoesProximo.get(Number(alterados[0])) : null;
+    const pessoasNovas = proximo.pessoas.filter(
+      (pessoa) =>
+        !anterior.pessoas.some((existente) => existente.pessoa_id === pessoa.pessoa_id),
+    );
+    if (
+      alterados.length !== 1 ||
+      !antes ||
+      !depois ||
+      antes.status !== "livre" ||
+      antes.ativa ||
+      antes.atendimento_id !== null ||
+      depois.status !== "ocupada" ||
+      !depois.ativa ||
+      !depois.atendimento_id ||
+      !depois.abertaEm ||
+      depois.garcom_id !== funcionario.funcionario_id ||
+      depois.contaSolicitada ||
+      !depois.servicoIncluso ||
+      pessoasNovas.length !== 1 ||
+      pessoasNovas[0]?.nome !== "Cliente" ||
+      pessoasNovas[0]?.atendimento_id !== depois.atendimento_id ||
+      pessoasNovas[0]?.mesa_id !== null ||
+      pessoasNovas[0]?.balcao_id !== depois.balcao_id ||
+      proximo.pessoas.length !== anterior.pessoas.length + 1 ||
+      proximo.itens.length !== anterior.itens.length ||
+      proximo.tickets.length !== anterior.tickets.length ||
+      [...anterior.mesas, ...anterior.balcoes].some(
+        (local) => local.atendimento_id === depois.atendimento_id,
+      )
+    ) {
+      throw new Error("Abertura de balcão inválida.");
+    }
+  }
+
+  if (acao === "transferir_balcao_mesa") {
+    const balcoesAlterados = validarCamposComuns(
+      anterior.balcoes as unknown as Record<string, unknown>[],
+      proximo.balcoes as unknown as Record<string, unknown>[],
+      "balcao_id",
+      [
+        "status",
+        "ativa",
+        "atendimento_id",
+        "abertaEm",
+        "garcom_id",
+        "contaSolicitada",
+        "servicoIncluso",
+      ],
+    );
+    const mesasAlteradas = validarCamposComuns(
+      anterior.mesas as unknown as Record<string, unknown>[],
+      proximo.mesas as unknown as Record<string, unknown>[],
+      "mesa_id",
+      [
+        "status",
+        "ativa",
+        "atendimento_id",
+        "abertaEm",
+        "garcom_id",
+        "contaSolicitada",
+        "servicoIncluso",
+      ],
+    );
+    const origem =
+      balcoesAlterados.length === 1
+        ? mapaBalcoesAnterior.get(Number(balcoesAlterados[0]))
+        : null;
+    const origemDepois =
+      balcoesAlterados.length === 1
+        ? mapaBalcoesProximo.get(Number(balcoesAlterados[0]))
+        : null;
+    const destino =
+      mesasAlteradas.length === 1 ? mapaAnterior.get(Number(mesasAlteradas[0])) : null;
+    const destinoDepois =
+      mesasAlteradas.length === 1 ? mapaProximo.get(Number(mesasAlteradas[0])) : null;
+    if (
+      balcoesAlterados.length !== 1 ||
+      mesasAlteradas.length !== 1 ||
+      !origem?.ativa ||
+      origem.status !== "ocupada" ||
+      origem.contaSolicitada ||
+      !origem.atendimento_id ||
+      !origemDepois ||
+      origemDepois.ativa ||
+      origemDepois.status !== "livre" ||
+      origemDepois.atendimento_id !== null ||
+      origemDepois.abertaEm !== null ||
+      origemDepois.garcom_id !== null ||
+      origemDepois.contaSolicitada ||
+      !origemDepois.servicoIncluso ||
+      !destino ||
+      destino.ativa ||
+      destino.status !== "livre" ||
+      destino.atendimento_id !== null ||
+      !destinoDepois?.ativa ||
+      destinoDepois.status !== "ocupada" ||
+      destinoDepois.atendimento_id !== origem.atendimento_id ||
+      destinoDepois.abertaEm !== origem.abertaEm ||
+      destinoDepois.garcom_id !== origem.garcom_id ||
+      destinoDepois.contaSolicitada ||
+      destinoDepois.servicoIncluso !== origem.servicoIncluso ||
+      destinoDepois.pessoasFixas !== destino.pessoasFixas ||
+      centavos(destinoDepois.totalFixo) !== centavos(destino.totalFixo)
+    ) {
+      throw new Error("Transferência de balcão para mesa inválida.");
+    }
+
+    const validarRegistrosTransferidos = <T extends Vinculo>(
+      antes: T[],
+      depois: T[],
+      chave: keyof T,
+    ) => {
+      const mapaAntes = new Map(antes.map((registro) => [String(registro[chave]), registro]));
+      const mapaDepois = new Map(
+        depois.map((registro) => [String(registro[chave]), registro]),
+      );
+      if (
+        mapaAntes.size !== mapaDepois.size ||
+        [...mapaAntes.keys()].some((id) => !mapaDepois.has(id))
+      ) {
+        throw new Error("Transferência não pode criar ou remover registros.");
+      }
+      for (const [id, registroAntes] of mapaAntes) {
+        const registroDepois = mapaDepois.get(id);
+        if (!registroDepois) throw new Error("Registro ausente após transferência.");
+        if (registroAntes.atendimento_id !== origem.atendimento_id) {
+          if (serializar(registroAntes) !== serializar(registroDepois)) {
+            throw new Error("Transferência alterou outro atendimento.");
+          }
+          continue;
+        }
+        const esperado = {
+          ...registroAntes,
+          mesa_id: destino.mesa_id,
+          balcao_id: null,
+        };
+        if (serializar(esperado) !== serializar(registroDepois)) {
+          throw new Error("Transferência alterou dados além do local do atendimento.");
+        }
+      }
+    };
+    validarRegistrosTransferidos(anterior.pessoas, proximo.pessoas, "pessoa_id");
+    validarRegistrosTransferidos(anterior.itens, proximo.itens, "item_id");
+    validarRegistrosTransferidos(anterior.tickets, proximo.tickets, "ticket_id");
   }
 
   if (acao === "alterar_comanda") {
@@ -868,9 +1173,9 @@ export function validarTransicao(
     }
     for (const pessoa of proximo.pessoas) {
       if (pessoasAntes.has(pessoa.pessoa_id)) continue;
-      const mesa = mapaAnterior.get(pessoa.mesa_id);
-      if (!mesa?.ativa || mesa.contaSolicitada) {
-        throw new Error("Pessoa nova exige mesa ativa e aberta para lançamentos.");
+      const local = atendimentoAtivo(anterior, pessoa);
+      if (!local || local.contaSolicitada) {
+        throw new Error("Pessoa nova exige atendimento ativo e aberto para lançamentos.");
       }
     }
 
@@ -897,16 +1202,16 @@ export function validarTransicao(
     }
     for (const item of proximo.itens) {
       if (itensAntes.has(item.item_id)) continue;
-      const mesa = mapaAnterior.get(item.mesa_id);
+      const local = atendimentoAtivo(anterior, item);
       const pessoaValida =
-        item.pessoa_id === compartilhadoId(item.mesa_id) ||
+        item.pessoa_id === compartilhadoId(item.atendimento_id) ||
         proximo.pessoas.some(
           (pessoa) =>
-            pessoa.pessoa_id === item.pessoa_id && pessoa.mesa_id === item.mesa_id,
+            pessoa.pessoa_id === item.pessoa_id && mesmoVinculo(pessoa, item),
         );
       if (
-        !mesa?.ativa ||
-        mesa.contaSolicitada ||
+        !local ||
+        local.contaSolicitada ||
         !pessoaValida ||
         item.status !== "novo" ||
         item.pedido_id !== null ||
@@ -979,7 +1284,9 @@ export function validarTransicao(
           !item ||
           !itensAlterados.includes(itemId) ||
           item.pedido_id !== ticket.pedido_id ||
+          item.atendimento_id !== ticket.atendimento_id ||
           item.mesa_id !== ticket.mesa_id ||
+          item.balcao_id !== ticket.balcao_id ||
           item.destino_producao !== ticket.destino_producao ||
           !linha ||
           linha.produto_id !== item.produto_id ||
@@ -1254,8 +1561,14 @@ export function validarTransicao(
   }
 
   const idsMesasAlteradas = new Set<number>();
+  const idsBalcoesAlterados = new Set<number>();
   for (const id of new Set([...mapaAnterior.keys(), ...mapaProximo.keys()])) {
     if (serializar(mapaAnterior.get(id)) !== serializar(mapaProximo.get(id))) idsMesasAlteradas.add(id);
+  }
+  for (const id of new Set([...mapaBalcoesAnterior.keys(), ...mapaBalcoesProximo.keys()])) {
+    if (serializar(mapaBalcoesAnterior.get(id)) !== serializar(mapaBalcoesProximo.get(id))) {
+      idsBalcoesAlterados.add(id);
+    }
   }
   const colecoesPorMesa = [
     [anterior.pessoas, proximo.pessoas, "pessoa_id"],
@@ -1273,30 +1586,55 @@ export function validarTransicao(
     for (const chave of chaves) {
       if (serializar(mapaAntes.get(chave)) === serializar(mapaDepois.get(chave))) continue;
       const registro = mapaAntes.get(chave) ?? mapaDepois.get(chave);
-      if (registro) idsMesasAlteradas.add(registro.mesa_id);
+      if (typeof registro?.mesa_id === "number") idsMesasAlteradas.add(registro.mesa_id);
+      if (typeof registro?.balcao_id === "number") {
+        idsBalcoesAlterados.add(registro.balcao_id);
+      }
     }
   }
 
   if (acao === "solicitar_fechamento") {
-    const alteradas = validarCamposComuns(
+    const mesasAlteradas = validarCamposComuns(
       anterior.mesas as unknown as Record<string, unknown>[],
       proximo.mesas as unknown as Record<string, unknown>[],
       "mesa_id",
       ["status", "contaSolicitada"],
     );
-    const antes = alteradas.length === 1 ? mapaAnterior.get(Number(alteradas[0])) : null;
-    const depois = alteradas.length === 1 ? mapaProximo.get(Number(alteradas[0])) : null;
+    const balcoesAlterados = validarCamposComuns(
+      anterior.balcoes as unknown as Record<string, unknown>[],
+      proximo.balcoes as unknown as Record<string, unknown>[],
+      "balcao_id",
+      ["status", "contaSolicitada"],
+    );
+    const antes =
+      mesasAlteradas.length === 1
+        ? mapaAnterior.get(Number(mesasAlteradas[0]))
+        : balcoesAlterados.length === 1
+          ? mapaBalcoesAnterior.get(Number(balcoesAlterados[0]))
+          : null;
+    const depois =
+      mesasAlteradas.length === 1
+        ? mapaProximo.get(Number(mesasAlteradas[0]))
+        : balcoesAlterados.length === 1
+          ? mapaBalcoesProximo.get(Number(balcoesAlterados[0]))
+          : null;
     const itensMesa = antes
-      ? anterior.itens.filter((item) => item.mesa_id === antes.mesa_id)
+      ? anterior.itens.filter(
+          (item) => item.atendimento_id === antes.atendimento_id,
+        )
       : [];
     const temPessoas = antes
-      ? anterior.pessoas.some((pessoa) => pessoa.mesa_id === antes.mesa_id)
+      ? anterior.pessoas.some(
+          (pessoa) => pessoa.atendimento_id === antes.atendimento_id,
+        )
       : false;
     if (
-      alteradas.length !== 1 ||
+      mesasAlteradas.length + balcoesAlterados.length !== 1 ||
       !antes?.ativa ||
+      !antes.atendimento_id ||
       antes.contaSolicitada ||
       !depois?.ativa ||
+      depois.atendimento_id !== antes.atendimento_id ||
       depois.status !== "aguardando" ||
       !depois.contaSolicitada ||
       !itensMesa.length ||
@@ -1312,18 +1650,36 @@ export function validarTransicao(
   }
 
   if (acao === "alterar_servico") {
-    const alteradas = validarCamposComuns(
+    const mesasAlteradas = validarCamposComuns(
       anterior.mesas as unknown as Record<string, unknown>[],
       proximo.mesas as unknown as Record<string, unknown>[],
       "mesa_id",
       ["servicoIncluso"],
     );
-    const antes = alteradas.length === 1 ? mapaAnterior.get(Number(alteradas[0])) : null;
-    const depois = alteradas.length === 1 ? mapaProximo.get(Number(alteradas[0])) : null;
+    const balcoesAlterados = validarCamposComuns(
+      anterior.balcoes as unknown as Record<string, unknown>[],
+      proximo.balcoes as unknown as Record<string, unknown>[],
+      "balcao_id",
+      ["servicoIncluso"],
+    );
+    const antes =
+      mesasAlteradas.length === 1
+        ? mapaAnterior.get(Number(mesasAlteradas[0]))
+        : balcoesAlterados.length === 1
+          ? mapaBalcoesAnterior.get(Number(balcoesAlterados[0]))
+          : null;
+    const depois =
+      mesasAlteradas.length === 1
+        ? mapaProximo.get(Number(mesasAlteradas[0]))
+        : balcoesAlterados.length === 1
+          ? mapaBalcoesProximo.get(Number(balcoesAlterados[0]))
+          : null;
     if (
-      alteradas.length !== 1 ||
+      mesasAlteradas.length + balcoesAlterados.length !== 1 ||
       !antes?.ativa ||
+      !antes.atendimento_id ||
       !depois?.ativa ||
+      depois.atendimento_id !== antes.atendimento_id ||
       antes.servicoIncluso === depois.servicoIncluso
     ) {
       throw new Error("Alteração da taxa de serviço inválida.");
@@ -1353,6 +1709,30 @@ export function validarTransicao(
         mesa?.garcom_id !== funcionario.funcionario_id
       ) {
         throw new Error("Garçom não pode alterar mesa de outro funcionário.");
+      }
+    }
+    for (const balcaoId of idsBalcoesAlterados) {
+      const balcaoAnterior = mapaBalcoesAnterior.get(balcaoId);
+      const balcaoProximo = mapaBalcoesProximo.get(balcaoId);
+      const balcao = balcaoAnterior ?? balcaoProximo;
+      const atendimentoCompartilhado =
+        (acao === "alterar_comanda" || acao === "enviar_pedido") &&
+        balcaoAnterior?.ativa &&
+        balcaoAnterior.status === "ocupada" &&
+        !balcaoAnterior.contaSolicitada &&
+        balcaoProximo?.ativa &&
+        balcaoProximo.status === "ocupada" &&
+        !balcaoProximo.contaSolicitada;
+      const abrindoLivre =
+        acao === "abrir_balcao" &&
+        balcaoAnterior?.status === "livre" &&
+        balcaoProximo?.garcom_id === funcionario.funcionario_id;
+      if (
+        !atendimentoCompartilhado &&
+        !abrindoLivre &&
+        balcao?.garcom_id !== funcionario.funcionario_id
+      ) {
+        throw new Error("Garçom não pode alterar balcão de outro funcionário.");
       }
     }
   }
@@ -1393,44 +1773,70 @@ export function validarTransicao(
       }
     }
     const fechamento = fechamentosNovos[0];
-    const mesaAntes = fechamento ? mapaAnterior.get(fechamento.mesa_id) : null;
-    const mesaDepois = fechamento ? mapaProximo.get(fechamento.mesa_id) : null;
+    const localAntes = fechamento
+      ? fechamento.mesa_id !== null
+        ? mapaAnterior.get(fechamento.mesa_id)
+        : mapaBalcoesAnterior.get(fechamento.balcao_id as number)
+      : null;
+    const localDepois = fechamento
+      ? fechamento.mesa_id !== null
+        ? mapaProximo.get(fechamento.mesa_id)
+        : mapaBalcoesProximo.get(fechamento.balcao_id as number)
+      : null;
     if (
       fechamentosNovos.length !== 1 ||
       !fechamento ||
-      !mesaAntes?.ativa ||
-      !mesaDepois ||
-      mesaDepois.status !== "livre" ||
-      mesaDepois.ativa ||
-      mesaDepois.contaSolicitada ||
-      mesaDepois.abertaEm !== null ||
-      mesaDepois.garcom_id !== null ||
-      !mesaDepois.servicoIncluso ||
-      mesaDepois.pessoasFixas !== 0 ||
-      centavos(mesaDepois.totalFixo) !== 0
+      !localAntes?.ativa ||
+      localAntes.atendimento_id !== fechamento.atendimento_id ||
+      !localDepois ||
+      localDepois.status !== "livre" ||
+      localDepois.ativa ||
+      localDepois.atendimento_id !== null ||
+      localDepois.contaSolicitada ||
+      localDepois.abertaEm !== null ||
+      localDepois.garcom_id !== null ||
+      !localDepois.servicoIncluso ||
+      ("pessoasFixas" in localDepois &&
+        (localDepois.pessoasFixas !== 0 ||
+          centavos(localDepois.totalFixo) !== 0))
     ) {
-      throw new Error("Encerramento financeiro da mesa inválido.");
+      throw new Error("Encerramento financeiro do atendimento inválido.");
     }
-    validarForaDaMesa(anterior.pessoas, proximo.pessoas, fechamento.mesa_id);
-    validarForaDaMesa(anterior.itens, proximo.itens, fechamento.mesa_id);
-    validarForaDaMesa(anterior.tickets, proximo.tickets, fechamento.mesa_id);
+    const semAtendimento = <T extends { atendimento_id: string }>(registros: T[]) =>
+      registros.filter(
+        (registro) => registro.atendimento_id !== fechamento.atendimento_id,
+      );
     if (
-      proximo.pessoas.some((registro) => registro.mesa_id === fechamento.mesa_id) ||
-      proximo.itens.some((registro) => registro.mesa_id === fechamento.mesa_id) ||
-      proximo.tickets.some((registro) => registro.mesa_id === fechamento.mesa_id)
+      serializar(semAtendimento(anterior.pessoas)) !==
+        serializar(semAtendimento(proximo.pessoas)) ||
+      serializar(semAtendimento(anterior.itens)) !==
+        serializar(semAtendimento(proximo.itens)) ||
+      serializar(semAtendimento(anterior.tickets)) !==
+        serializar(semAtendimento(proximo.tickets)) ||
+      proximo.pessoas.some(
+        (registro) => registro.atendimento_id === fechamento.atendimento_id,
+      ) ||
+      proximo.itens.some(
+        (registro) => registro.atendimento_id === fechamento.atendimento_id,
+      ) ||
+      proximo.tickets.some(
+        (registro) => registro.atendimento_id === fechamento.atendimento_id,
+      )
     ) {
-      throw new Error("Fechamento deve limpar somente os dados da mesa encerrada.");
+      throw new Error("Fechamento deve limpar somente os dados do atendimento encerrado.");
     }
-    const itensDaMesa = new Set(
+    const itensDoAtendimento = new Set(
       anterior.itens
-        .filter((item) => item.mesa_id === fechamento.mesa_id)
+        .filter((item) => item.atendimento_id === fechamento.atendimento_id)
         .map((item) => item.item_id),
     );
     const anterioresEsperados = Object.fromEntries(
-      Object.entries(anterior.anteriores).filter(([itemId]) => !itensDaMesa.has(itemId)),
+      Object.entries(anterior.anteriores).filter(
+        ([itemId]) => !itensDoAtendimento.has(itemId),
+      ),
     );
     if (serializar(proximo.anteriores) !== serializar(anterioresEsperados)) {
-      throw new Error("Fechamento alterou histórico de cancelamento de outra mesa.");
+      throw new Error("Fechamento alterou histórico de cancelamento de outro atendimento.");
     }
   }
   if (
@@ -1462,14 +1868,17 @@ export function validarTransicao(
       }
     }
     const registro = encerramentosNovos[0];
-    const mesaAntes = registro ? mapaAnterior.get(registro.mesa_id) : null;
-    const mesaDepois = registro ? mapaProximo.get(registro.mesa_id) : null;
+    const mesaId = registro?.mesa_id ?? null;
+    const mesaAntes = mesaId !== null ? mapaAnterior.get(mesaId) : null;
+    const mesaDepois = mesaId !== null ? mapaProximo.get(mesaId) : null;
     const itensMesa = registro
       ? anterior.itens.filter((item) => item.mesa_id === registro.mesa_id)
       : [];
     if (
       encerramentosNovos.length !== 1 ||
       !registro ||
+      mesaId === null ||
+      registro.balcao_id !== null ||
       !mesaAntes?.ativa ||
       !mesaAntes.abertaEm ||
       !mesaDepois ||
@@ -1489,8 +1898,8 @@ export function validarTransicao(
     ) {
       throw new Error("Encerramento sem consumo inválido.");
     }
-    validarForaDaMesa(anterior.pessoas, proximo.pessoas, registro.mesa_id);
-    validarForaDaMesa(anterior.itens, proximo.itens, registro.mesa_id);
+    validarForaDaMesa(anterior.pessoas, proximo.pessoas, mesaId);
+    validarForaDaMesa(anterior.itens, proximo.itens, mesaId);
     if (
       proximo.pessoas.some((pessoa) => pessoa.mesa_id === registro.mesa_id) ||
       proximo.itens.some((item) => item.mesa_id === registro.mesa_id)
@@ -1513,12 +1922,15 @@ export function validarTransicao(
     );
     const desfeitoEm = depois?.desfeito_em ? new Date(depois.desfeito_em).getTime() : Number.NaN;
     const encerradaEm = antes ? new Date(antes.encerrada_em).getTime() : Number.NaN;
-    const mesaAntes = antes ? mapaAnterior.get(antes.mesa_id) : null;
-    const mesaDepois = antes ? mapaProximo.get(antes.mesa_id) : null;
+    const mesaId = antes?.mesa_id ?? null;
+    const mesaAntes = mesaId !== null ? mapaAnterior.get(mesaId) : null;
+    const mesaDepois = mesaId !== null ? mapaProximo.get(mesaId) : null;
     if (
       alterados.length !== 1 ||
       !antes ||
       !depois ||
+      mesaId === null ||
+      antes.balcao_id !== null ||
       antes.desfeito_em !== null ||
       !Number.isFinite(desfeitoEm) ||
       !Number.isFinite(encerradaEm) ||
@@ -1535,8 +1947,8 @@ export function validarTransicao(
     ) {
       throw new Error("Desfazer encerramento sem consumo inválido ou expirado.");
     }
-    validarForaDaMesa(anterior.pessoas, proximo.pessoas, antes.mesa_id);
-    validarForaDaMesa(anterior.itens, proximo.itens, antes.mesa_id);
+    validarForaDaMesa(anterior.pessoas, proximo.pessoas, mesaId);
+    validarForaDaMesa(anterior.itens, proximo.itens, mesaId);
     const pessoasAntes = new Set(anterior.pessoas.map((pessoa) => pessoa.pessoa_id));
     const itensAntes = new Set(anterior.itens.map((item) => item.item_id));
     const pessoasRestauradas = proximo.pessoas.filter(
@@ -1646,12 +2058,14 @@ export async function salvarEstado(
     );
     const linhasFechadas = novosFechamentos.flatMap((fechamento) =>
       anterior.itens
-        .filter((item) => item.mesa_id === fechamento.mesa_id)
+        .filter((item) => item.atendimento_id === fechamento.atendimento_id)
         .map((item) => ({
           organizacaoId,
           fechamentoId: fechamento.fechamento_id,
           itemId: item.item_id,
+          atendimentoId: item.atendimento_id,
           mesaId: item.mesa_id,
+          balcaoId: item.balcao_id,
           produtoId: item.produto_id,
           nome: item.name,
           precoCentavos: centavos(item.price),
@@ -1668,13 +2082,16 @@ export async function salvarEstado(
       const autorizados = anterior.itens
         .filter(
           (item) =>
-            item.status === "cancelamento_solicitado" && !idsAtuais.has(item.item_id),
+            item.status === "cancelamento_solicitado" &&
+            !idsAtuais.has(item.item_id),
         )
         .map((item) => ({
           organizacaoId,
           cancelamentoId: crypto.randomUUID(),
           itemId: item.item_id,
+          atendimentoId: item.atendimento_id,
           mesaId: item.mesa_id,
+          balcaoId: item.balcao_id,
           produtoId: item.produto_id,
           nome: item.name,
           precoCentavos: centavos(item.price),
@@ -1772,6 +2189,7 @@ export async function salvarConfiguracao(
       .map((mesaId) => ({
         organizacaoId,
         mesaId,
+        atendimentoId: null,
         status: "livre" as const,
         ativa: false,
         pessoasFixas: 0,

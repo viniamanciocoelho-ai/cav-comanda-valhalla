@@ -32,6 +32,24 @@ export function mesaLabel(id: number): string {
   return String(id).padStart(2, "0");
 }
 
+export function localLabel(local: {
+  mesa_id: number | null;
+  balcao_id: number | null;
+}): string {
+  return local.mesa_id !== null
+    ? `Mesa ${mesaLabel(local.mesa_id)}`
+    : `Balcão ${local.balcao_id ?? "?"}`;
+}
+
+export function localHref(local: {
+  mesa_id: number | null;
+  balcao_id: number | null;
+}): string {
+  return local.mesa_id !== null
+    ? `/mesa/${local.mesa_id}`
+    : `/balcao/${local.balcao_id ?? ""}`;
+}
+
 const hhmm = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
 /** Hora de um registro (ISO) no formato 19:42. */

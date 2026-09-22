@@ -124,6 +124,7 @@ const aberta = await clienteOdin.comanda.persistir({
     ...estadoOdin.estado,
     mesas: estadoOdin.estado.mesas.map((mesa) => ({
       ...mesa,
+      atendimento_id: "at-odin-1",
       status: "ocupada" as const,
       ativa: true,
       abertaEm: instante,

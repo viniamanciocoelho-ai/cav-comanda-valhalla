@@ -3,6 +3,8 @@ import type { Dados } from "../components/comanda-provider";
 
 export type AcaoPersistencia =
   | "abrir_mesa"
+  | "abrir_balcao"
+  | "transferir_balcao_mesa"
   | "alterar_comanda"
   | "enviar_pedido"
   | "mover_producao"
@@ -176,6 +178,7 @@ export function codigoDoErro(erro: unknown): string | null {
 type Colecao = Exclude<keyof Dados, "anteriores">;
 const colecoes: Colecao[] = [
   "mesas",
+  "balcoes",
   "pessoas",
   "itens",
   "tickets",
@@ -206,6 +209,7 @@ export function reaplicarAcao(
   const resultado: Dados = {
     ...remoto,
     mesas: [...remoto.mesas],
+    balcoes: [...remoto.balcoes],
     pessoas: [...remoto.pessoas],
     itens: [...remoto.itens],
     tickets: [...remoto.tickets],

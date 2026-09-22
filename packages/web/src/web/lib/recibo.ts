@@ -12,15 +12,21 @@ import { ehCompartilhado } from "./operacao";
 import { ratear } from "./rateio";
 
 export function montarRecibo(
-  mesaId: number,
+  local: number | { mesa_id: number | null; balcao_id: number | null },
   pessoas: Pessoa[],
   itens: OrderItem[],
   divisao: LinhaDivisao[],
   largura: 58 | 80,
 ): string {
+  const localTexto =
+    typeof local === "number"
+      ? `MESA ${String(local).padStart(2, "0")}`
+      : local.mesa_id !== null
+        ? `MESA ${String(local.mesa_id).padStart(2, "0")}`
+        : `BALCAO ${local.balcao_id}`;
   const linhas: string[] = [
     "VALHALLA CHOPERIA",
-    `MESA ${String(mesaId).padStart(2, "0")}`,
+    localTexto,
     "-".repeat(largura === 58 ? 32 : 42),
   ];
   for (const pessoa of pessoas) {
@@ -38,10 +44,14 @@ export function montarRecibo(
 }
 
 export function montarFichaProducao(ticket: Ticket, largura: 58 | 80): string {
+  const local =
+    ticket.mesa_id !== null
+      ? `MESA ${String(ticket.mesa_id).padStart(2, "0")}`
+      : `BALCAO ${ticket.balcao_id}`;
   const linhas: string[] = [
     "VALHALLA CHOPERIA",
     `FICHA ${ticket.destino_producao === "bar" ? "BAR" : "COZINHA"}`,
-    `MESA ${String(ticket.mesa_id).padStart(2, "0")}`,
+    local,
     "-".repeat(largura === 58 ? 32 : 42),
   ];
   for (const linha of ticket.linhas) {
@@ -87,7 +97,7 @@ export function montarRelatorioDiario(
     linhas.push("", "FECHAMENTOS");
     for (const fechamento of relatorio.fechamentos) {
       linhas.push(
-        `M${String(fechamento.mesa_id).padStart(2, "0")} ${fechamento.hora} ${moneyCentavos(fechamento.totalCentavos)} ${fechamento.funcionario_nome}`,
+        `${localAbreviado(fechamento)} ${fechamento.hora} ${moneyCentavos(fechamento.totalCentavos)} ${fechamento.funcionario_nome}`,
       );
     }
   }
@@ -95,7 +105,7 @@ export function montarRelatorioDiario(
     linhas.push("", "SEM CONSUMO");
     for (const registro of relatorio.encerramentosSemConsumo) {
       linhas.push(
-        `M${String(registro.mesa_id).padStart(2, "0")} ${motivoSemConsumoLabel[registro.motivo]}`,
+        `${localAbreviado(registro)} ${motivoSemConsumoLabel[registro.motivo]}`,
       );
     }
   }
@@ -103,7 +113,7 @@ export function montarRelatorioDiario(
     linhas.push("", "CANCELAMENTOS");
     for (const cancelamento of relatorio.cancelamentos) {
       linhas.push(
-        `M${String(cancelamento.mesa_id).padStart(2, "0")} ${cancelamento.quantidade}x ${cancelamento.nome} - ${cancelamento.autorizado_por_nome}`,
+        `${localAbreviado(cancelamento)} ${cancelamento.quantidade}x ${cancelamento.nome} - ${cancelamento.autorizado_por_nome}`,
       );
     }
   }
@@ -114,6 +124,12 @@ export function montarRelatorioDiario(
 
 function destinoLabel(destino: Destino) {
   return destino === "bar" ? "BAR" : "COZINHA";
+}
+
+function localAbreviado(local: { mesa_id: number | null; balcao_id: number | null }) {
+  return local.mesa_id !== null
+    ? `M${String(local.mesa_id).padStart(2, "0")}`
+    : `B${local.balcao_id ?? "?"}`;
 }
 
 export function divisaoDoFechamento(

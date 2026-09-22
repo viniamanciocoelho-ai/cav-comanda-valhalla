@@ -12,6 +12,8 @@ import {
   destinoLabel,
   itemStatusColor,
   itemStatusLabel,
+  localHref,
+  localLabel,
   mesaLabel,
   mesaStatusColor,
   mesaStatusLabel,
@@ -64,7 +66,10 @@ export default function GarcomPage() {
 
   const meusIds = minhas.map((mesa) => mesa.mesa_id);
   const prontos = itens.filter(
-    (item) => item.status === "pronto" && meusIds.includes(item.mesa_id),
+    (item) =>
+      item.status === "pronto" &&
+      item.mesa_id !== null &&
+      meusIds.includes(item.mesa_id),
   );
   const naoEnviados = minhas.reduce((soma, mesa) => soma + resumo(mesa.mesa_id).novos, 0);
   const pedindoConta = minhas.filter((mesa) => mesa.contaSolicitada).length;
@@ -132,7 +137,7 @@ export default function GarcomPage() {
                   {item.name}
                 </p>
                 <p className="text-muted mt-0.5 text-[12px] tracking-[0.06em] uppercase">
-                  Mesa {mesaLabel(item.mesa_id)} · {nomeDaPessoa(item.pessoa_id)} ·{" "}
+                  {localLabel(item)} · {nomeDaPessoa(item.pessoa_id)} ·{" "}
                   {destinoLabel[item.destino_producao]}
                 </p>
                 {item.observacao ? (
@@ -146,12 +151,12 @@ export default function GarcomPage() {
                   aoEntregar={() => {
                     marcarEntregue(item.item_id);
                     notificar(
-                      `${item.name} entregue na Mesa ${mesaLabel(item.mesa_id)}.`,
+                      `${item.name} entregue em ${localLabel(item)}.`,
                       "sucesso",
                     );
                   }}
                 />
-                <Action onClick={() => navegar(`/mesa/${item.mesa_id}`)}>Abrir comanda</Action>
+                <Action onClick={() => navegar(localHref(item))}>Abrir comanda</Action>
               </div>
             </li>
           ))}

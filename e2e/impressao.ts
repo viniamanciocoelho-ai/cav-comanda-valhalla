@@ -8,7 +8,9 @@ const ticketTeste: Ticket = {
   organizacao_id: "valhalla",
   ticket_id: "t-serializacao",
   pedido_id: "p-serializacao",
+  atendimento_id: "at-serializacao",
   mesa_id: 8,
+  balcao_id: null,
   destino_producao: "cozinha",
   status: "enviado",
   linhas: [
@@ -105,13 +107,21 @@ const produtoCozinha = estadoInicial.cardapio.find(
 );
 assert.ok(produtoBar);
 assert.ok(produtoCozinha);
-const pessoa = { pessoa_id: "m8-impressao", nome: "Ana", mesa_id: 8 };
+const pessoa = {
+  pessoa_id: "m8-impressao",
+  nome: "Ana",
+  atendimento_id: "at-impressao",
+  mesa_id: 8,
+  balcao_id: null,
+};
 const agora = new Date().toISOString();
 const itemBar = {
   organizacao_id: "valhalla",
   item_id: "i-bar-impressao",
   pedido_id: null,
+  atendimento_id: "at-impressao",
   mesa_id: 8,
+  balcao_id: null,
   pessoa_id: pessoa.pessoa_id,
   produto_id: produtoBar.produto_id,
   name: produtoBar.name,
@@ -147,6 +157,7 @@ const aberta = await gerencia.comanda.persistir({
             ...mesa,
             status: "ocupada" as const,
             ativa: true,
+            atendimento_id: "at-impressao",
             abertaEm: agora,
             garcom_id: "f-gerencia",
           }
@@ -183,7 +194,9 @@ const enviado = await gerencia.comanda.persistir({
         ...ticketTeste,
         ticket_id: "t-bar-impressao",
         pedido_id: pedidoId,
+        atendimento_id: "at-impressao",
         mesa_id: 8,
+        balcao_id: null,
         destino_producao: "bar",
         linhas: [
           {
@@ -206,7 +219,9 @@ const enviado = await gerencia.comanda.persistir({
         ...ticketTeste,
         ticket_id: "t-cozinha-impressao",
         pedido_id: pedidoId,
+        atendimento_id: "at-impressao",
         mesa_id: 8,
+        balcao_id: null,
         destino_producao: "cozinha",
         linhas: [
           {
@@ -252,6 +267,38 @@ assert.equal(
   2,
 );
 
+const reservaLocal = await gerencia.impressao.impressaoLocalReservar({
+  destino: "cozinha",
+});
+assert.equal(reservaLocal.impressao?.impressao_id, filaCozinha.impressao_id);
+const reservaDuplicada = await gerencia.impressao.impressaoLocalReservar({
+  destino: "cozinha",
+});
+assert.equal(reservaDuplicada.impressao, null);
+assert.deepEqual(
+  await gerencia.impressao.impressaoLocalConcluir({
+    impressaoId: filaCozinha.impressao_id,
+    sucesso: false,
+    erro: "Falha simulada no dispositivo local.",
+  }),
+  { ok: true },
+);
+const retryLocal = await gerencia.impressao.impressaoLocalReservar({
+  destino: "cozinha",
+});
+assert.equal(retryLocal.impressao?.impressao_id, filaCozinha.impressao_id);
+assert.deepEqual(
+  await gerencia.impressao.impressaoLocalConcluir({
+    impressaoId: filaCozinha.impressao_id,
+    sucesso: true,
+  }),
+  { ok: true },
+);
+assert.equal(
+  (await gerencia.impressao.impressaoLocalReservar({ destino: "cozinha" })).impressao,
+  null,
+);
+
 const antesFechamento = await gerencia.comanda.estado();
 const subtotal = produtoBar.price + produtoCozinha.price;
 const servico = Math.round(subtotal * 100 * 0.1) / 100;
@@ -269,6 +316,7 @@ const fechamento = await gerencia.comanda.persistir({
             ...mesa,
             status: "livre" as const,
             ativa: false,
+            atendimento_id: null,
             contaSolicitada: false,
             abertaEm: null,
             garcom_id: null,
@@ -285,7 +333,9 @@ const fechamento = await gerencia.comanda.persistir({
       {
         organizacao_id: "valhalla",
         fechamento_id: fechamentoId,
+        atendimento_id: "at-impressao",
         mesa_id: 8,
+        balcao_id: null,
         hora: "12:00",
         subtotal,
         servico,

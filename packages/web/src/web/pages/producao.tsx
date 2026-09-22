@@ -12,7 +12,7 @@ import {
   desde,
   destinoLabel,
   hora,
-  mesaLabel,
+  localLabel,
   ticketStatusColor,
   ticketStatusLabel,
 } from "../lib/format";
@@ -52,9 +52,11 @@ function CartaoFicha({
     >
       <div className="border-line flex items-start justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
-          <p className="font-display text-muted text-[12px] tracking-[0.22em] uppercase">Mesa</p>
+          <p className="font-display text-muted text-[12px] tracking-[0.22em] uppercase">
+            Local
+          </p>
           <p className="font-display vh-tabular text-parchment text-[30px] leading-none tracking-[0.02em]">
-            {mesaLabel(ficha.mesa_id)}
+            {localLabel(ficha)}
           </p>
           <p className="text-muted mt-1.5 truncate text-[12px]">
             {ficha.funcionario_nome} · enviado {hora(ficha.enviado_em)}

@@ -11,7 +11,8 @@ import type { Destino, MotivoSemConsumo, RelatorioDiario } from "../../web/lib/t
 
 interface LinhaFechamento {
   fechamentoId: string;
-  mesaId: number;
+  mesaId: number | null;
+  balcaoId: number | null;
   hora: string;
   totalCentavos: number;
   servicoCentavos: number;
@@ -29,7 +30,8 @@ interface LinhaItemFechado {
 
 interface LinhaSemConsumo {
   encerramentoId: string;
-  mesaId: number;
+  mesaId: number | null;
+  balcaoId: number | null;
   motivo: string;
   observacao: string;
   funcionarioNome: string;
@@ -38,7 +40,8 @@ interface LinhaSemConsumo {
 
 interface LinhaCancelamento {
   cancelamentoId: string;
-  mesaId: number;
+  mesaId: number | null;
+  balcaoId: number | null;
   nome: string;
   precoCentavos: number;
   quantidade: number;
@@ -153,6 +156,7 @@ export function calcularRelatorioDiario(
     fechamentos: linhasFechamentos.map((fechamento) => ({
       fechamento_id: fechamento.fechamentoId,
       mesa_id: fechamento.mesaId,
+      balcao_id: fechamento.balcaoId,
       hora: fechamento.hora,
       totalCentavos: fechamento.totalCentavos,
       funcionario_nome: fechamento.funcionarioNome,
@@ -160,6 +164,7 @@ export function calcularRelatorioDiario(
     encerramentosSemConsumo: linhasSemConsumo.map((registro) => ({
       encerramento_id: registro.encerramentoId,
       mesa_id: registro.mesaId,
+      balcao_id: registro.balcaoId,
       motivo: registro.motivo as MotivoSemConsumo,
       observacao: registro.observacao,
       funcionario_nome: registro.funcionarioNome,
@@ -168,6 +173,7 @@ export function calcularRelatorioDiario(
     cancelamentos: linhasCancelamentos.map((registro) => ({
       cancelamento_id: registro.cancelamentoId,
       mesa_id: registro.mesaId,
+      balcao_id: registro.balcaoId,
       nome: registro.nome,
       quantidade: registro.quantidade,
       valorCentavos: registro.precoCentavos * registro.quantidade,

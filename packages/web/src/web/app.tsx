@@ -9,9 +9,11 @@ import { AgentFeedback } from "@runablehq/website-runtime";
 
 const Index = lazy(() => import("./pages/index"));
 const Mesa = lazy(() => import("./pages/mesa"));
+const Balcao = lazy(() => import("./pages/balcao"));
 const Garcom = lazy(() => import("./pages/garcom"));
 const Caixa = lazy(() => import("./pages/caixa"));
 const Producao = lazy(() => import("./pages/producao"));
+const Cozinha = lazy(() => import("./pages/cozinha"));
 const Fechamentos = lazy(() => import("./pages/fechamentos"));
 const RelatorioDiario = lazy(() => import("./pages/relatorio-diario"));
 const Configuracao = lazy(() => import("./pages/configuracao"));
@@ -37,8 +39,10 @@ function App() {
               <Route path="/" component={Index} />
               <Route path="/garcom" component={Garcom} />
               <Route path="/mesa/:id" component={Mesa} />
+              <Route path="/balcao/:id" component={Balcao} />
               <Route path="/caixa" component={Caixa} />
               <Route path="/producao" component={Producao} />
+              <Route path="/cozinha" component={Cozinha} />
               <Route path="/fechamentos" component={Fechamentos} />
               <Route path="/relatorio-diario" component={RelatorioDiario} />
               <Route path="/configuracao" component={Configuracao} />

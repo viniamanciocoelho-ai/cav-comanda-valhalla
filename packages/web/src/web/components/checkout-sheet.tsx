@@ -1,12 +1,11 @@
-// Dialogo do caixa: divisao por pessoa, controle da taxa de servico e impressao da notinha.
-// A conta e sempre dividida por pessoa e cada um paga a parte dele na forma que quiser —
-// a maquininha continua sendo a de hoje, fora do sistema.
+// Diálogo do caixa: divisão por pessoa, controle da taxa de serviço e impressão manual.
+// O mesmo atendimento pode estar em uma mesa ou no balcão.
 
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { CheckCircle2, Circle, Info, Printer } from "lucide-react";
 import { TAXA_SERVICO } from "../lib/operacao";
-import { mesaLabel, money } from "../lib/format";
+import { localLabel, money } from "../lib/format";
 import { useAcaoUnica } from "../lib/hooks";
 import {
   adaptadorImpressao,
@@ -21,30 +20,37 @@ import { RuneDivider } from "./ui/pieces";
 export function CheckoutSheet({
   open,
   onClose,
-  mesa_id,
+  atendimento_id,
 }: {
   open: boolean;
   onClose: () => void;
-  mesa_id: number;
+  atendimento_id: string;
 }) {
   const [, navegar] = useLocation();
   const {
-    resumo,
     mesas,
-    itensDaMesa,
-    alternarServico,
-    fecharConta,
+    balcoes,
+    resumoAtendimento,
+    itensDoAtendimento,
+    alternarServicoAtendimento,
+    fecharAtendimento,
     notificar,
-    pessoasDaMesa,
+    pessoasDoAtendimento,
   } = useComanda();
   const [pagos, setPagos] = useState<string[]>([]);
-  // Um fechamento por clique: o duplo clique nao gera dois registros (lib/hooks.ts).
   const encerramento = useAcaoUnica();
   const servico = useAcaoUnica();
 
-  const conta = resumo(mesa_id);
-  const mesa = mesas.find((m) => m.mesa_id === mesa_id);
-  const cancelamentoPendente = itensDaMesa(mesa_id).some(
+  const mesa = mesas.find((registro) => registro.atendimento_id === atendimento_id);
+  const balcao = balcoes.find((registro) => registro.atendimento_id === atendimento_id);
+  const local = mesa
+    ? { mesa_id: mesa.mesa_id, balcao_id: null }
+    : { mesa_id: null, balcao_id: balcao?.balcao_id ?? null };
+  const rotulo = localLabel(local);
+  const conta = resumoAtendimento(atendimento_id);
+  const itens = itensDoAtendimento(atendimento_id);
+  const pessoas = pessoasDoAtendimento(atendimento_id);
+  const cancelamentoPendente = itens.some(
     (item) => item.status === "cancelamento_solicitado",
   );
   const faltam = conta.divisao.filter((linha) => !pagos.includes(linha.pessoa_id)).length;
@@ -62,13 +68,7 @@ export function CheckoutSheet({
 
   function imprimir() {
     try {
-      const texto = montarRecibo(
-        mesa_id,
-        pessoasDaMesa(mesa_id),
-        itensDaMesa(mesa_id),
-        conta.divisao,
-        58,
-      );
+      const texto = montarRecibo(local, pessoas, itens, conta.divisao, 58);
       const configuracao = lerConfiguracaoImpressaoLocal();
       const envio = adaptadorImpressao.imprimir(
         serializarEscPos(texto, configuracao.paginaCodigo),
@@ -106,13 +106,13 @@ export function CheckoutSheet({
       notificar("Cadastre pelo menos uma pessoa na comanda antes de fechar.", "atencao");
       return;
     }
-    const registro = fecharConta(mesa_id, false);
+    const registro = fecharAtendimento(atendimento_id, false);
     if (!registro) {
-      notificar("Não há consumo para fechar nesta mesa.", "atencao");
+      notificar(`Não há consumo para fechar em ${rotulo}.`, "atencao");
       return;
     }
-      notificar(
-      `Mesa ${mesaLabel(mesa_id)} fechada em ${registro.hora} · ${money(registro.total)}. Registro gravado.`,
+    notificar(
+      `${rotulo} fechado às ${registro.hora} · ${money(registro.total)}. Registro gravado.`,
       "sucesso",
     );
     fechar();
@@ -124,7 +124,7 @@ export function CheckoutSheet({
       open={open}
       onClose={fechar}
       testId="dialogo-fechamento"
-      eyebrow={`Mesa ${mesaLabel(mesa_id)}`}
+      eyebrow={rotulo}
       title="Dividir e fechar a conta"
       hint="Itens individuais ficam com cada pessoa. Itens compartilhados são rateados igualmente. Cada pessoa paga a parte dela na forma que preferir."
       footer={
@@ -177,7 +177,9 @@ export function CheckoutSheet({
               </p>
               <Action
                 variante={conta.servicoIncluso ? "secundaria" : "tracejada"}
-                onClick={() => servico.executar(() => alternarServico(mesa_id))}
+                onClick={() =>
+                  servico.executar(() => alternarServicoAtendimento(atendimento_id))
+                }
                 disabled={servico.processando}
                 aria-disabled={servico.processando}
                 data-testid="alternar-servico"
@@ -188,7 +190,7 @@ export function CheckoutSheet({
           </div>
           <div className="bg-surface-3 flex items-center justify-between px-4 py-3">
             <p className="font-display text-parchment text-[13px] tracking-[0.14em] uppercase">
-              Total da mesa
+              Total do atendimento
             </p>
             <p className="font-display vh-tabular text-gold-bright text-[22px] tracking-[0.03em]">
               {money(conta.total)}
@@ -247,7 +249,7 @@ export function CheckoutSheet({
 
       {!conta.divisao.length ? (
         <div className="border-line text-muted rounded-md border border-dashed p-6 text-center text-[13px]">
-          Esta mesa não tem pessoas cadastradas na comanda.
+          Este atendimento não tem pessoas cadastradas na comanda.
         </div>
       ) : null}
 
@@ -265,16 +267,16 @@ export function CheckoutSheet({
             Recibo simples
           </p>
           <p className="text-muted mt-1 text-[12px] leading-relaxed">
-            A notinha é um resumo do consumo. O fechamento envia o recibo para a térmica do caixa;
-            sem ela, esta ação usa a impressão do navegador.
+            A notinha é um resumo do consumo. A impressão manual via RawBT permanece disponível
+            neste botão e não interfere na fila automática da produção.
           </p>
         </div>
       </div>
 
-      {mesa && !mesa.contaSolicitada ? (
+      {!(mesa?.contaSolicitada ?? balcao?.contaSolicitada) ? (
         <p className="text-muted mt-4 text-[12px] leading-relaxed">
-          Esta mesa não passou pelo pedido de fechamento do garçom. No dia a dia o caixa também
-          pode fechar direto, quando o cliente vem até o balcão.
+          Este atendimento não passou pela solicitação do garçom. O caixa também pode fechar
+          diretamente quando o cliente vem pagar.
         </p>
       ) : null}
     </Sheet>

@@ -4,6 +4,7 @@ export function criarMesaVazia(organizacaoId: string, mesaId: number): Mesa {
   return {
     organizacao_id: organizacaoId,
     mesa_id: mesaId,
+    atendimento_id: null,
     status: "livre",
     ativa: false,
     pessoasFixas: 0,

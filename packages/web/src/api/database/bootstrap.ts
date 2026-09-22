@@ -31,20 +31,31 @@ async function criarEstrutura() {
       organizacao_id TEXT PRIMARY KEY, versao INTEGER NOT NULL DEFAULT 0, atualizado_em TEXT NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS mesas (
-      organizacao_id TEXT NOT NULL, mesa_id INTEGER NOT NULL, status TEXT NOT NULL,
+      organizacao_id TEXT NOT NULL, mesa_id INTEGER NOT NULL, atendimento_id TEXT, status TEXT NOT NULL,
       ativa INTEGER NOT NULL, pessoas_fixas INTEGER NOT NULL,
       total_fixo_centavos INTEGER NOT NULL, aberta_em TEXT, garcom_id TEXT,
       conta_solicitada INTEGER NOT NULL, servico_incluso INTEGER NOT NULL,
       PRIMARY KEY (organizacao_id, mesa_id)
     )`,
     `CREATE INDEX IF NOT EXISTS mesas_org_status ON mesas (organizacao_id, status)`,
+    `CREATE TABLE IF NOT EXISTS balcoes (
+      organizacao_id TEXT NOT NULL, balcao_id INTEGER NOT NULL, atendimento_id TEXT,
+      status TEXT NOT NULL, ativa INTEGER NOT NULL, aberta_em TEXT, garcom_id TEXT,
+      conta_solicitada INTEGER NOT NULL, servico_incluso INTEGER NOT NULL,
+      PRIMARY KEY (organizacao_id, balcao_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS balcoes_org_status ON balcoes (organizacao_id, status)`,
     `CREATE TABLE IF NOT EXISTS pessoas_da_comanda (
-      organizacao_id TEXT NOT NULL, pessoa_id TEXT NOT NULL, mesa_id INTEGER NOT NULL,
+      organizacao_id TEXT NOT NULL, pessoa_id TEXT NOT NULL, atendimento_id TEXT NOT NULL,
+      mesa_id INTEGER, balcao_id INTEGER,
       nome TEXT NOT NULL, PRIMARY KEY (organizacao_id, pessoa_id)
     )`,
     `CREATE INDEX IF NOT EXISTS pessoas_org_mesa ON pessoas_da_comanda (organizacao_id, mesa_id)`,
+    `CREATE INDEX IF NOT EXISTS pessoas_org_balcao ON pessoas_da_comanda (organizacao_id, balcao_id)`,
+    `CREATE INDEX IF NOT EXISTS pessoas_org_atendimento ON pessoas_da_comanda (organizacao_id, atendimento_id)`,
     `CREATE TABLE IF NOT EXISTS itens_pedido (
-      organizacao_id TEXT NOT NULL, item_id TEXT NOT NULL, pedido_id TEXT, mesa_id INTEGER NOT NULL,
+      organizacao_id TEXT NOT NULL, item_id TEXT NOT NULL, pedido_id TEXT,
+      atendimento_id TEXT NOT NULL, mesa_id INTEGER, balcao_id INTEGER,
       pessoa_id TEXT NOT NULL, produto_id TEXT NOT NULL, nome TEXT NOT NULL,
       preco_centavos INTEGER NOT NULL, quantidade INTEGER NOT NULL, observacao TEXT NOT NULL,
       destino_producao TEXT NOT NULL, status TEXT NOT NULL, status_anterior TEXT,
@@ -53,35 +64,46 @@ async function criarEstrutura() {
       enviado_em TEXT, atualizado_em TEXT NOT NULL, PRIMARY KEY (organizacao_id, item_id)
     )`,
     `CREATE INDEX IF NOT EXISTS itens_org_mesa ON itens_pedido (organizacao_id, mesa_id)`,
+    `CREATE INDEX IF NOT EXISTS itens_org_balcao ON itens_pedido (organizacao_id, balcao_id)`,
+    `CREATE INDEX IF NOT EXISTS itens_org_atendimento ON itens_pedido (organizacao_id, atendimento_id)`,
     `CREATE INDEX IF NOT EXISTS itens_org_status ON itens_pedido (organizacao_id, status)`,
     `CREATE TABLE IF NOT EXISTS fichas_producao (
       organizacao_id TEXT NOT NULL, ticket_id TEXT NOT NULL, pedido_id TEXT NOT NULL,
-      mesa_id INTEGER NOT NULL, destino_producao TEXT NOT NULL, status TEXT NOT NULL,
+      atendimento_id TEXT NOT NULL, mesa_id INTEGER, balcao_id INTEGER,
+      destino_producao TEXT NOT NULL, status TEXT NOT NULL,
       linhas_json TEXT NOT NULL, item_ids_json TEXT NOT NULL, funcionario_id TEXT NOT NULL,
       funcionario_nome TEXT NOT NULL, criado_em TEXT NOT NULL, enviado_em TEXT NOT NULL,
       atualizado_em TEXT NOT NULL, PRIMARY KEY (organizacao_id, ticket_id)
     )`,
+    `CREATE INDEX IF NOT EXISTS fichas_org_atendimento ON fichas_producao (organizacao_id, atendimento_id)`,
     `CREATE INDEX IF NOT EXISTS fichas_org_status ON fichas_producao (organizacao_id, status)`,
     `CREATE TABLE IF NOT EXISTS fechamentos (
-      organizacao_id TEXT NOT NULL, fechamento_id TEXT NOT NULL, mesa_id INTEGER NOT NULL,
+      organizacao_id TEXT NOT NULL, fechamento_id TEXT NOT NULL, atendimento_id TEXT NOT NULL,
+      mesa_id INTEGER, balcao_id INTEGER,
       hora TEXT NOT NULL, subtotal_centavos INTEGER NOT NULL, servico_centavos INTEGER NOT NULL,
       total_centavos INTEGER NOT NULL, servico_incluso INTEGER NOT NULL, divisao_json TEXT NOT NULL,
       funcionario_nome TEXT NOT NULL, garcom_nome TEXT, criado_em TEXT NOT NULL,
       PRIMARY KEY (organizacao_id, fechamento_id)
     )`,
     `CREATE INDEX IF NOT EXISTS fechamentos_org_mesa ON fechamentos (organizacao_id, mesa_id)`,
+    `CREATE INDEX IF NOT EXISTS fechamentos_org_balcao ON fechamentos (organizacao_id, balcao_id)`,
+    `CREATE INDEX IF NOT EXISTS fechamentos_org_atendimento ON fechamentos (organizacao_id, atendimento_id)`,
     `CREATE TABLE IF NOT EXISTS itens_fechamento (
       organizacao_id TEXT NOT NULL, fechamento_id TEXT NOT NULL, item_id TEXT NOT NULL,
-      mesa_id INTEGER NOT NULL, produto_id TEXT NOT NULL, nome TEXT NOT NULL,
+      atendimento_id TEXT NOT NULL, mesa_id INTEGER, balcao_id INTEGER,
+      produto_id TEXT NOT NULL, nome TEXT NOT NULL,
       preco_centavos INTEGER NOT NULL, quantidade INTEGER NOT NULL,
       destino_producao TEXT NOT NULL, criado_em TEXT NOT NULL,
       PRIMARY KEY (organizacao_id, fechamento_id, item_id)
     )`,
     `CREATE INDEX IF NOT EXISTS itens_fechamento_org_fechamento
       ON itens_fechamento (organizacao_id, fechamento_id)`,
+    `CREATE INDEX IF NOT EXISTS itens_fechamento_org_atendimento
+      ON itens_fechamento (organizacao_id, atendimento_id)`,
     `CREATE TABLE IF NOT EXISTS cancelamentos_autorizados (
       organizacao_id TEXT NOT NULL, cancelamento_id TEXT NOT NULL, item_id TEXT NOT NULL,
-      mesa_id INTEGER NOT NULL, produto_id TEXT NOT NULL, nome TEXT NOT NULL,
+      atendimento_id TEXT NOT NULL, mesa_id INTEGER, balcao_id INTEGER,
+      produto_id TEXT NOT NULL, nome TEXT NOT NULL,
       preco_centavos INTEGER NOT NULL, quantidade INTEGER NOT NULL,
       destino_producao TEXT NOT NULL, autorizado_por_id TEXT NOT NULL,
       autorizado_por_nome TEXT NOT NULL, autorizado_em TEXT NOT NULL,
@@ -89,8 +111,11 @@ async function criarEstrutura() {
     )`,
     `CREATE INDEX IF NOT EXISTS cancelamentos_org_autorizado
       ON cancelamentos_autorizados (organizacao_id, autorizado_em)`,
+    `CREATE INDEX IF NOT EXISTS cancelamentos_org_atendimento
+      ON cancelamentos_autorizados (organizacao_id, atendimento_id)`,
     `CREATE TABLE IF NOT EXISTS encerramentos_sem_consumo (
-      organizacao_id TEXT NOT NULL, encerramento_id TEXT NOT NULL, mesa_id INTEGER NOT NULL,
+      organizacao_id TEXT NOT NULL, encerramento_id TEXT NOT NULL, atendimento_id TEXT NOT NULL,
+      mesa_id INTEGER, balcao_id INTEGER,
       abertura_id TEXT NOT NULL, motivo TEXT NOT NULL, observacao TEXT NOT NULL,
       rascunhos_descartados INTEGER NOT NULL, funcionario_id TEXT NOT NULL,
       funcionario_nome TEXT NOT NULL, funcionario_perfil TEXT NOT NULL, aberta_em TEXT,
@@ -98,6 +123,8 @@ async function criarEstrutura() {
       PRIMARY KEY (organizacao_id, encerramento_id),
       UNIQUE (organizacao_id, abertura_id)
     )`,
+    `CREATE INDEX IF NOT EXISTS encerramentos_org_atendimento
+      ON encerramentos_sem_consumo (organizacao_id, atendimento_id)`,
     `CREATE TABLE IF NOT EXISTS cardapio (
       organizacao_id TEXT NOT NULL, produto_id TEXT NOT NULL, nome TEXT NOT NULL,
       preco_centavos INTEGER NOT NULL, destino_producao TEXT NOT NULL, categoria TEXT NOT NULL,
@@ -117,9 +144,11 @@ async function criarEstrutura() {
     `CREATE INDEX IF NOT EXISTS impressoras_org_ativa ON impressoras (organizacao_id, ativa)`,
     `CREATE TABLE IF NOT EXISTS fila_impressoes (
       organizacao_id TEXT NOT NULL, impressao_id TEXT NOT NULL, destino TEXT NOT NULL,
-      tipo TEXT NOT NULL, referencia_id TEXT NOT NULL, mesa_id INTEGER NOT NULL,
+      tipo TEXT NOT NULL, referencia_id TEXT NOT NULL, atendimento_id TEXT NOT NULL,
+      mesa_id INTEGER, balcao_id INTEGER,
       texto TEXT NOT NULL, largura INTEGER NOT NULL, status TEXT NOT NULL,
-      tentativas INTEGER NOT NULL DEFAULT 0, ultimo_erro TEXT, criado_em TEXT NOT NULL,
+      tentativas INTEGER NOT NULL DEFAULT 0, ultimo_erro TEXT, impresso_em TEXT,
+      criado_em TEXT NOT NULL,
       atualizado_em TEXT NOT NULL, PRIMARY KEY (organizacao_id, impressao_id),
       UNIQUE (organizacao_id, tipo, referencia_id)
     )`,

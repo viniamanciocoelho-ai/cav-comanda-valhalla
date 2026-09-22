@@ -14,6 +14,7 @@ const {
   exportarBanco,
   gravarBackupLocal,
   lerBackup,
+  normalizarBackup,
   restaurarBanco,
   validarIntegridade,
 } = await import("../packages/web/scripts/backup-core");
@@ -48,6 +49,39 @@ try {
     "o backup deve conter todas as tabelas previstas",
   );
   assert.deepEqual(backup.organizacoesIncluidas, ["valhalla"]);
+  assert.equal(backup.versao, 2);
+  assert.equal(backup.tabelas.balcoes.length, 4);
+  assert.equal("atendimento_id" in backup.tabelas.mesas[0]!, true);
+  assert.equal("impresso_em" in (backup.tabelas.fila_impressoes[0] ?? {
+    impresso_em: null,
+  }), true);
+
+  const backupLegado = {
+    ...backup,
+    versao: 1,
+    tabelas: Object.fromEntries(
+    Object.entries(backup.tabelas)
+      .filter(([tabela]) => tabela !== "balcoes")
+      .map(([tabela, registros]) => [
+        tabela,
+        registros.map((registro) =>
+          Object.fromEntries(
+            Object.entries(registro).filter(
+              ([coluna]) =>
+                coluna !== "atendimento_id" &&
+                coluna !== "balcao_id" &&
+                coluna !== "impresso_em",
+            ),
+          ),
+        ),
+      ]),
+    ),
+  };
+  const legadoNormalizado = normalizarBackup(backupLegado);
+  validarIntegridade(legadoNormalizado);
+  assert.equal(legadoNormalizado.versao, 2);
+  assert.deepEqual(legadoNormalizado.tabelas.balcoes, []);
+  assert.equal("atendimento_id" in legadoNormalizado.tabelas.mesas[0]!, true);
 
   const arquivo = await gravarBackupLocal(backup, diretorio);
   const relido = await lerBackup(arquivo);
@@ -122,6 +156,12 @@ try {
     (await client.execute("SELECT COUNT(*) AS total FROM auditoria")).rows[0]?.total,
     1,
   );
+  await restaurarBanco(client, backupLegado, "valhalla");
+  assert.equal(
+    (await client.execute("SELECT COUNT(*) AS total FROM balcoes")).rows[0]?.total,
+    0,
+  );
+  await restaurarBanco(client, backup, "valhalla");
 
   console.log(
     "backup: tabelas, integridade, falha S3, retenção, confirmação e restauração aprovados",

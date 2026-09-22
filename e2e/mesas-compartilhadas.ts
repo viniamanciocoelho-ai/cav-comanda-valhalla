@@ -66,6 +66,7 @@ const mesaAberta = {
           ...mesa,
           status: "ocupada" as const,
           ativa: true,
+          atendimento_id: "at-mesa-08",
           abertaEm: new Date().toISOString(),
           garcom_id: sessaoGerencia.funcionario.funcionario_id,
         }
@@ -91,13 +92,17 @@ const agora = new Date().toISOString();
 const pessoa = {
   pessoa_id: "m8-dennis",
   nome: "Cliente Mesa 08",
+  atendimento_id: "at-mesa-08",
   mesa_id: 8,
+  balcao_id: null,
 };
 const item = {
   organizacao_id: estadoDoDennis.organizacaoId,
   item_id: "i-m8-dennis",
   pedido_id: null,
+  atendimento_id: "at-mesa-08",
   mesa_id: 8,
+  balcao_id: null,
   pessoa_id: pessoa.pessoa_id,
   produto_id: produto.produto_id,
   name: produto.name,
@@ -148,7 +153,9 @@ const enviado = await dennis.comanda.persistir({
         organizacao_id: estadoDoDennis.organizacaoId,
         ticket_id: "t-m8-dennis",
         pedido_id: pedidoId,
+        atendimento_id: "at-mesa-08",
         mesa_id: 8,
+        balcao_id: null,
         destino_producao: produto.destino_producao,
         status: "enviado" as const,
         linhas: [

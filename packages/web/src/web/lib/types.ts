@@ -44,7 +44,9 @@ export interface Funcionario {
 export interface Pessoa {
   pessoa_id: string;
   nome: string;
-  mesa_id: number;
+  atendimento_id: string;
+  mesa_id: number | null;
+  balcao_id: number | null;
 }
 
 export interface OrderItem {
@@ -52,7 +54,9 @@ export interface OrderItem {
   item_id: string;
   /** Agrupa os itens lancados no mesmo envio. Itens novos ficam sem pedido. */
   pedido_id: string | null;
-  mesa_id: number;
+  atendimento_id: string;
+  mesa_id: number | null;
+  balcao_id: number | null;
   pessoa_id: string;
   produto_id: string;
   name: string;
@@ -73,6 +77,7 @@ export interface OrderItem {
 export interface Mesa {
   organizacao_id: string;
   mesa_id: number;
+  atendimento_id: string | null;
   status: MesaStatus;
   ativa: boolean;
   /** Número de pessoas registradas quando a mesa está ativa. */
@@ -84,6 +89,31 @@ export interface Mesa {
   /** Garcom pediu o fechamento: a mesa entra na fila do caixa. */
   contaSolicitada: boolean;
   /** Taxa de servico: controlada apenas pelo caixa. */
+  servicoIncluso: boolean;
+}
+
+export interface Balcao {
+  organizacao_id: string;
+  balcao_id: number;
+  atendimento_id: string | null;
+  status: MesaStatus;
+  ativa: boolean;
+  abertaEm: string | null;
+  garcom_id: string | null;
+  contaSolicitada: boolean;
+  servicoIncluso: boolean;
+}
+
+export interface LocalAtendimento {
+  organizacao_id: string;
+  atendimento_id: string;
+  mesa_id: number | null;
+  balcao_id: number | null;
+  status: MesaStatus;
+  ativa: boolean;
+  abertaEm: string | null;
+  garcom_id: string | null;
+  contaSolicitada: boolean;
   servicoIncluso: boolean;
 }
 
@@ -125,12 +155,15 @@ export interface Impressao {
   destino: DestinoImpressao;
   tipo: TipoImpressao;
   referencia_id: string;
-  mesa_id: number;
+  atendimento_id: string;
+  mesa_id: number | null;
+  balcao_id: number | null;
   status: StatusImpressao;
   tentativas: number;
   ultimo_erro: string | null;
   texto: string;
   largura: 58 | 80;
+  impresso_em: string | null;
   criado_em: string;
   atualizado_em: string;
 }
@@ -148,7 +181,9 @@ export interface Ticket {
   organizacao_id: string;
   ticket_id: string;
   pedido_id: string;
-  mesa_id: number;
+  atendimento_id: string;
+  mesa_id: number | null;
+  balcao_id: number | null;
   destino_producao: Destino;
   status: TicketStatus;
   linhas: TicketLinha[];
@@ -182,6 +217,20 @@ export interface ResumoMesa {
   divisao: LinhaDivisao[];
 }
 
+export interface ResumoAtendimento {
+  atendimento_id: string;
+  mesa_id: number | null;
+  balcao_id: number | null;
+  subtotal: number;
+  servico: number;
+  total: number;
+  servicoIncluso: boolean;
+  itens: number;
+  novos: number;
+  prontos: number;
+  divisao: LinhaDivisao[];
+}
+
 /** Motivos previstos para liberar uma mesa sem nenhum consumo. */
 export type MotivoSemConsumo =
   | "desistiram"
@@ -199,7 +248,9 @@ export type MotivoSemConsumo =
 export interface EncerramentoSemConsumo {
   organizacao_id: string;
   encerramento_id: string;
-  mesa_id: number;
+  atendimento_id: string;
+  mesa_id: number | null;
+  balcao_id: number | null;
   /** Abertura encerrada (mesa + horario de abertura). Chave de idempotencia da operacao. */
   abertura_id: string;
   encerrada_sem_consumo: true;
@@ -222,7 +273,9 @@ export interface EncerramentoSemConsumo {
 export interface Fechamento {
   organizacao_id: string;
   fechamento_id: string;
-  mesa_id: number;
+  atendimento_id: string;
+  mesa_id: number | null;
+  balcao_id: number | null;
   hora: string;
   subtotal: number;
   servico: number;
@@ -256,14 +309,16 @@ export interface RelatorioDiario {
   }[];
   fechamentos: {
     fechamento_id: string;
-    mesa_id: number;
+    mesa_id: number | null;
+    balcao_id: number | null;
     hora: string;
     totalCentavos: number;
     funcionario_nome: string;
   }[];
   encerramentosSemConsumo: {
     encerramento_id: string;
-    mesa_id: number;
+    mesa_id: number | null;
+    balcao_id: number | null;
     motivo: MotivoSemConsumo;
     observacao: string;
     funcionario_nome: string;
@@ -271,7 +326,8 @@ export interface RelatorioDiario {
   }[];
   cancelamentos: {
     cancelamento_id: string;
-    mesa_id: number;
+    mesa_id: number | null;
+    balcao_id: number | null;
     nome: string;
     quantidade: number;
     valorCentavos: number;
