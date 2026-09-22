@@ -1332,12 +1332,26 @@ export function validarTransicao(
 
   if (funcionario.funcionario_perfil === "garcom") {
     for (const mesaId of idsMesasAlteradas) {
-      const mesa = mapaAnterior.get(mesaId) ?? mapaProximo.get(mesaId);
+      const mesaAnterior = mapaAnterior.get(mesaId);
+      const mesaProxima = mapaProximo.get(mesaId);
+      const mesa = mesaAnterior ?? mesaProxima;
+      const atendimentoCompartilhado =
+        (acao === "alterar_comanda" || acao === "enviar_pedido") &&
+        mesaAnterior?.ativa &&
+        mesaAnterior.status === "ocupada" &&
+        !mesaAnterior.contaSolicitada &&
+        mesaProxima?.ativa &&
+        mesaProxima.status === "ocupada" &&
+        !mesaProxima.contaSolicitada;
       const abrindoLivre =
         acao === "abrir_mesa" &&
-        mapaAnterior.get(mesaId)?.status === "livre" &&
-        mapaProximo.get(mesaId)?.garcom_id === funcionario.funcionario_id;
-      if (!abrindoLivre && mesa?.garcom_id !== funcionario.funcionario_id) {
+        mesaAnterior?.status === "livre" &&
+        mesaProxima?.garcom_id === funcionario.funcionario_id;
+      if (
+        !atendimentoCompartilhado &&
+        !abrindoLivre &&
+        mesa?.garcom_id !== funcionario.funcionario_id
+      ) {
         throw new Error("Garçom não pode alterar mesa de outro funcionário.");
       }
     }

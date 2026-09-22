@@ -243,6 +243,13 @@ function podeOperarMesa(funcionario: Funcionario, mesa: Mesa): boolean {
   );
 }
 
+function podeLancarNaMesa(funcionario: Funcionario, mesa: Mesa): boolean {
+  return (
+    funcionario.funcionario_perfil === "gerencia" ||
+    (funcionario.funcionario_perfil === "garcom" && mesa.ativa)
+  );
+}
+
 function podeOperarProducao(funcionario: Funcionario): boolean {
   return (
     funcionario.funcionario_perfil === "gerencia" ||
@@ -817,8 +824,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   );
 
   const mesasDoGarcom = useCallback(
-    (funcionario_id: string) =>
-      dados.mesas.filter((m) => m.garcom_id === funcionario_id || m.status === "livre"),
+    (_funcionario_id: string) =>
+      dados.mesas.filter((mesa) => mesa.status === "livre" || mesa.ativa),
     [dados.mesas],
   );
 
@@ -895,7 +902,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const limpo = nome.trim();
       if (!limpo) return null;
       const mesa = espelho.current.mesas.find((m) => m.mesa_id === mesa_id);
-      if (!mesa || !mesa.ativa || !podeOperarMesa(funcionarioAtivo, mesa)) return null;
+      if (!mesa || !mesa.ativa || !podeLancarNaMesa(funcionarioAtivo, mesa)) return null;
       const pessoa: Pessoa = {
         pessoa_id: `m${mesa_id}-${novoId("p")}`,
         nome: limpo,
@@ -929,7 +936,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         !mesa ||
         !mesa.ativa ||
         mesa.contaSolicitada ||
-        !podeOperarMesa(funcionarioAtivo, mesa) ||
+        !podeLancarNaMesa(funcionarioAtivo, mesa) ||
         !destinatarioValido ||
         !quantidadeValida ||
         !produtoValido
@@ -1000,7 +1007,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           item.status !== "novo" ||
           !mesa ||
           mesa.contaSolicitada ||
-          !podeOperarMesa(funcionarioAtivo, mesa)
+          !podeLancarNaMesa(funcionarioAtivo, mesa)
         ) {
           return prev;
         }
@@ -1030,7 +1037,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           item.status !== "novo" ||
           !mesa ||
           mesa.contaSolicitada ||
-          !podeOperarMesa(funcionarioAtivo, mesa)
+          !podeLancarNaMesa(funcionarioAtivo, mesa)
         ) {
           return prev;
         }
@@ -1055,7 +1062,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           item.status !== "novo" ||
           !mesa ||
           mesa.contaSolicitada ||
-          !podeOperarMesa(funcionarioAtivo, mesa)
+          !podeLancarNaMesa(funcionarioAtivo, mesa)
         ) {
           return prev;
         }
@@ -1079,7 +1086,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         !mesa ||
         !mesa.ativa ||
         mesa.contaSolicitada ||
-        !podeOperarMesa(funcionarioAtivo, mesa)
+        !podeLancarNaMesa(funcionarioAtivo, mesa)
       ) {
         return 0;
       }
