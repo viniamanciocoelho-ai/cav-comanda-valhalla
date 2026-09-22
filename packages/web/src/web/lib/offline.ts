@@ -1,4 +1,18 @@
-import type { ConfiguracaoImpressora, Funcionario, Impressao, MenuItem, ProdutoConfiguracao } from "./types";
+import { compartilhadoId, ehCompartilhado } from "./operacao";
+import type {
+  Balcao,
+  ConfiguracaoImpressora,
+  EncerramentoSemConsumo,
+  Fechamento,
+  Funcionario,
+  Impressao,
+  MenuItem,
+  Mesa,
+  OrderItem,
+  Pessoa,
+  ProdutoConfiguracao,
+  Ticket,
+} from "./types";
 import type { Dados } from "../components/comanda-provider";
 
 export type AcaoPersistencia =
@@ -40,6 +54,7 @@ export interface FalhaOffline {
 }
 
 export interface SnapshotOffline {
+  schemaVersao?: 2;
   organizacaoId: string;
   versao: number;
   estado: Dados;
@@ -67,6 +82,374 @@ export interface ArmazenamentoOffline {
 
 const PREFIXO = "cav-comanda-offline:v1:";
 const SESSAO_PREFIXO = "cav-comanda-sessao:v1:";
+const SCHEMA_OFFLINE_ATUAL = 2;
+const ACOES_PERSISTENCIA = new Set<AcaoPersistencia>([
+  "abrir_mesa",
+  "abrir_balcao",
+  "transferir_balcao_mesa",
+  "alterar_comanda",
+  "enviar_pedido",
+  "mover_producao",
+  "entregar_item",
+  "solicitar_cancelamento",
+  "decidir_cancelamento",
+  "solicitar_fechamento",
+  "alterar_servico",
+  "fechar_conta",
+  "encerrar_sem_consumo",
+  "desfazer_sem_consumo",
+]);
+
+type Registro = Record<string, unknown>;
+
+function registro(valor: unknown): Registro | null {
+  return valor !== null && typeof valor === "object" && !Array.isArray(valor)
+    ? (valor as Registro)
+    : null;
+}
+
+function texto(valor: unknown): string | null {
+  return typeof valor === "string" && valor.trim() ? valor : null;
+}
+
+function inteiro(valor: unknown): number | null {
+  return typeof valor === "number" && Number.isInteger(valor) ? valor : null;
+}
+
+function atendimentoLegado(mesaId: number) {
+  return `mesa:${mesaId}:legado`;
+}
+
+function criarBalcaoVazio(organizacaoId: string, balcaoId: number): Balcao {
+  return {
+    organizacao_id: organizacaoId,
+    balcao_id: balcaoId,
+    atendimento_id: null,
+    status: "livre",
+    ativa: false,
+    abertaEm: null,
+    garcom_id: null,
+    contaSolicitada: false,
+    servicoIncluso: true,
+  };
+}
+
+function normalizarMesas(
+  valor: unknown,
+  organizacaoId: string,
+): { mesas: Mesa[]; atendimentos: Map<number, string> } | null {
+  if (!Array.isArray(valor)) return null;
+  const mesas: Mesa[] = [];
+  const atendimentos = new Map<number, string>();
+  for (const entrada of valor) {
+    const atual = registro(entrada);
+    const mesaId = inteiro(atual?.mesa_id);
+    if (!atual || mesaId === null || typeof atual.ativa !== "boolean") return null;
+    const atendimentoExistente = texto(atual.atendimento_id);
+    const atendimentoId =
+      atendimentoExistente ?? (atual.ativa ? atendimentoLegado(mesaId) : null);
+    if (atendimentoId) atendimentos.set(mesaId, atendimentoId);
+    mesas.push({
+      ...(atual as unknown as Mesa),
+      organizacao_id: organizacaoId,
+      mesa_id: mesaId,
+      atendimento_id: atendimentoId,
+    });
+  }
+  return { mesas, atendimentos };
+}
+
+function normalizarBalcoes(valor: unknown, organizacaoId: string): Balcao[] | null {
+  if (valor === undefined) {
+    return Array.from({ length: 4 }, (_, indice) =>
+      criarBalcaoVazio(organizacaoId, indice + 1),
+    );
+  }
+  if (!Array.isArray(valor)) return null;
+  const balcoes: Balcao[] = [];
+  for (const entrada of valor) {
+    const atual = registro(entrada);
+    const balcaoId = inteiro(atual?.balcao_id);
+    if (!atual || balcaoId === null || typeof atual.ativa !== "boolean") return null;
+    balcoes.push({
+      ...(atual as unknown as Balcao),
+      organizacao_id: organizacaoId,
+      balcao_id: balcaoId,
+      atendimento_id: texto(atual.atendimento_id),
+    });
+  }
+  return balcoes;
+}
+
+function vinculo(
+  atual: Registro,
+  atendimentos: Map<number, string>,
+): { atendimentoId: string; mesaId: number | null; balcaoId: number | null } | null {
+  const mesaId = atual.mesa_id === null ? null : inteiro(atual.mesa_id);
+  const balcaoId = atual.balcao_id === null ? null : inteiro(atual.balcao_id);
+  if ((mesaId === null) === (balcaoId === null)) return null;
+  const atendimentoId =
+    texto(atual.atendimento_id) ??
+    (mesaId !== null ? atendimentos.get(mesaId) ?? atendimentoLegado(mesaId) : null);
+  return atendimentoId ? { atendimentoId, mesaId, balcaoId } : null;
+}
+
+function normalizarPessoas(
+  valor: unknown,
+  atendimentos: Map<number, string>,
+): Pessoa[] | null {
+  if (!Array.isArray(valor)) return null;
+  const pessoas: Pessoa[] = [];
+  for (const entrada of valor) {
+    const atual = registro(entrada);
+    const pessoaId = texto(atual?.pessoa_id);
+    const ligacao = atual ? vinculo(atual, atendimentos) : null;
+    if (!atual || !pessoaId || !ligacao) return null;
+    pessoas.push({
+      ...(atual as unknown as Pessoa),
+      pessoa_id: pessoaId,
+      atendimento_id: ligacao.atendimentoId,
+      mesa_id: ligacao.mesaId,
+      balcao_id: ligacao.balcaoId,
+    });
+  }
+  return pessoas;
+}
+
+function normalizarItens(
+  valor: unknown,
+  organizacaoId: string,
+  atendimentos: Map<number, string>,
+): OrderItem[] | null {
+  if (!Array.isArray(valor)) return null;
+  const itens: OrderItem[] = [];
+  for (const entrada of valor) {
+    const atual = registro(entrada);
+    const itemId = texto(atual?.item_id);
+    const pessoaId = texto(atual?.pessoa_id);
+    const ligacao = atual ? vinculo(atual, atendimentos) : null;
+    if (!atual || !itemId || !pessoaId || !ligacao) return null;
+    itens.push({
+      ...(atual as unknown as OrderItem),
+      organizacao_id: organizacaoId,
+      item_id: itemId,
+      pessoa_id: ehCompartilhado(pessoaId)
+        ? compartilhadoId(ligacao.atendimentoId)
+        : pessoaId,
+      atendimento_id: ligacao.atendimentoId,
+      mesa_id: ligacao.mesaId,
+      balcao_id: ligacao.balcaoId,
+    });
+  }
+  return itens;
+}
+
+function normalizarTickets(
+  valor: unknown,
+  organizacaoId: string,
+  atendimentos: Map<number, string>,
+): Ticket[] | null {
+  if (!Array.isArray(valor)) return null;
+  const tickets: Ticket[] = [];
+  for (const entrada of valor) {
+    const atual = registro(entrada);
+    const ticketId = texto(atual?.ticket_id);
+    const ligacao = atual ? vinculo(atual, atendimentos) : null;
+    if (!atual || !ticketId || !ligacao) return null;
+    tickets.push({
+      ...(atual as unknown as Ticket),
+      organizacao_id: organizacaoId,
+      ticket_id: ticketId,
+      atendimento_id: ligacao.atendimentoId,
+      mesa_id: ligacao.mesaId,
+      balcao_id: ligacao.balcaoId,
+    });
+  }
+  return tickets;
+}
+
+function normalizarFechamentos(
+  valor: unknown,
+  organizacaoId: string,
+  atendimentos: Map<number, string>,
+): Fechamento[] | null {
+  if (!Array.isArray(valor)) return null;
+  const fechamentos: Fechamento[] = [];
+  for (const entrada of valor) {
+    const atual = registro(entrada);
+    const fechamentoId = texto(atual?.fechamento_id);
+    const ligacao = atual ? vinculo(atual, atendimentos) : null;
+    if (!atual || !fechamentoId || !ligacao) return null;
+    fechamentos.push({
+      ...(atual as unknown as Fechamento),
+      organizacao_id: organizacaoId,
+      fechamento_id: fechamentoId,
+      atendimento_id: ligacao.atendimentoId,
+      mesa_id: ligacao.mesaId,
+      balcao_id: ligacao.balcaoId,
+    });
+  }
+  return fechamentos;
+}
+
+function normalizarEncerramentos(
+  valor: unknown,
+  organizacaoId: string,
+  atendimentos: Map<number, string>,
+): EncerramentoSemConsumo[] | null {
+  if (!Array.isArray(valor)) return null;
+  const encerramentos: EncerramentoSemConsumo[] = [];
+  for (const entrada of valor) {
+    const atual = registro(entrada);
+    const encerramentoId = texto(atual?.encerramento_id);
+    const ligacao = atual ? vinculo(atual, atendimentos) : null;
+    if (!atual || !encerramentoId || !ligacao) return null;
+    encerramentos.push({
+      ...(atual as unknown as EncerramentoSemConsumo),
+      organizacao_id: organizacaoId,
+      encerramento_id: encerramentoId,
+      atendimento_id: ligacao.atendimentoId,
+      mesa_id: ligacao.mesaId,
+      balcao_id: ligacao.balcaoId,
+    });
+  }
+  return encerramentos;
+}
+
+function normalizarDados(valor: unknown, organizacaoId: string): Dados | null {
+  const atual = registro(valor);
+  if (!atual) return null;
+  const mesasNormalizadas = normalizarMesas(atual.mesas, organizacaoId);
+  if (!mesasNormalizadas) return null;
+  const balcoes = normalizarBalcoes(atual.balcoes, organizacaoId);
+  const pessoas = normalizarPessoas(atual.pessoas, mesasNormalizadas.atendimentos);
+  const itens = normalizarItens(atual.itens, organizacaoId, mesasNormalizadas.atendimentos);
+  const tickets = normalizarTickets(
+    atual.tickets,
+    organizacaoId,
+    mesasNormalizadas.atendimentos,
+  );
+  const fechamentos = normalizarFechamentos(
+    atual.fechamentos,
+    organizacaoId,
+    mesasNormalizadas.atendimentos,
+  );
+  const encerramentos = normalizarEncerramentos(
+    atual.encerramentos,
+    organizacaoId,
+    mesasNormalizadas.atendimentos,
+  );
+  if (!balcoes || !pessoas || !itens || !tickets || !fechamentos || !encerramentos) {
+    return null;
+  }
+  const anteriores = registro(atual.anteriores);
+  if (!anteriores) return null;
+  return {
+    mesas: mesasNormalizadas.mesas,
+    balcoes,
+    pessoas,
+    itens,
+    tickets,
+    fechamentos,
+    encerramentos,
+    anteriores: anteriores as Dados["anteriores"],
+  };
+}
+
+function normalizarImpressoes(
+  valor: unknown,
+  organizacaoId: string,
+): Impressao[] | null {
+  if (!Array.isArray(valor)) return null;
+  const impressoes: Impressao[] = [];
+  for (const entrada of valor) {
+    const atual = registro(entrada);
+    const impressaoId = texto(atual?.impressao_id);
+    const mesaId = atual?.mesa_id === null ? null : inteiro(atual?.mesa_id);
+    const balcaoId = atual?.balcao_id === null ? null : inteiro(atual?.balcao_id);
+    const atendimentoId =
+      texto(atual?.atendimento_id) ??
+      (mesaId !== null ? atendimentoLegado(mesaId) : null);
+    if (!atual || !impressaoId || !atendimentoId) return null;
+    impressoes.push({
+      ...(atual as unknown as Impressao),
+      organizacao_id: organizacaoId,
+      impressao_id: impressaoId,
+      atendimento_id: atendimentoId,
+      mesa_id: mesaId,
+      balcao_id: balcaoId,
+      impresso_em: texto(atual.impresso_em),
+    });
+  }
+  return impressoes;
+}
+
+function normalizarSnapshot(valor: unknown, organizacaoId: string): SnapshotOffline | null {
+  const atual = registro(valor);
+  if (
+    !atual ||
+    atual.organizacaoId !== organizacaoId ||
+    typeof atual.versao !== "number" ||
+    !Array.isArray(atual.cardapio) ||
+    !Array.isArray(atual.produtos) ||
+    !Array.isArray(atual.funcionarios) ||
+    !Array.isArray(atual.impressoras) ||
+    typeof atual.quantidadeMesas !== "number" ||
+    (atual.larguraRecibo !== 58 && atual.larguraRecibo !== 80) ||
+    typeof atual.atualizadoEm !== "string"
+  ) {
+    return null;
+  }
+  const estado = normalizarDados(atual.estado, organizacaoId);
+  const impressoes = normalizarImpressoes(atual.impressoes, organizacaoId);
+  if (!estado || !impressoes) return null;
+  return {
+    schemaVersao: SCHEMA_OFFLINE_ATUAL,
+    organizacaoId,
+    versao: atual.versao,
+    estado,
+    cardapio: atual.cardapio as MenuItem[],
+    produtos: atual.produtos as ProdutoConfiguracao[],
+    funcionarios: atual.funcionarios as Funcionario[],
+    impressoras: atual.impressoras as ConfiguracaoImpressora[],
+    impressoes,
+    quantidadeMesas: atual.quantidadeMesas,
+    larguraRecibo: atual.larguraRecibo,
+    atualizadoEm: atual.atualizadoEm,
+  };
+}
+
+function normalizarFilaItem(valor: unknown, organizacaoId: string): FilaOfflineItem | null {
+  const atual = registro(valor);
+  const acao = texto(atual?.acao) as AcaoPersistencia | null;
+  const antes = atual ? normalizarDados(atual.antes, organizacaoId) : null;
+  const depois = atual ? normalizarDados(atual.depois, organizacaoId) : null;
+  if (
+    !atual ||
+    !texto(atual.id) ||
+    atual.organizacaoId !== organizacaoId ||
+    !acao ||
+    !ACOES_PERSISTENCIA.has(acao) ||
+    !antes ||
+    !depois ||
+    typeof atual.tentativas !== "number" ||
+    typeof atual.proximaTentativaEm !== "number" ||
+    typeof atual.criadoEm !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: atual.id as string,
+    organizacaoId,
+    acao,
+    ...(typeof atual.entidadeId === "string" ? { entidadeId: atual.entidadeId } : {}),
+    antes,
+    depois,
+    tentativas: atual.tentativas,
+    proximaTentativaEm: atual.proximaTentativaEm,
+    criadoEm: atual.criadoEm,
+  };
+}
 
 function armazenamentoNativo(): ArmazenamentoOffline | null {
   if (typeof window === "undefined") return null;
@@ -104,21 +487,38 @@ export function carregarSnapshot(
   organizacaoId: string,
   armazenamento = armazenamentoNativo(),
 ): SnapshotOffline | null {
-  return lerJson<SnapshotOffline | null>(armazenamento, chave(organizacaoId, "snapshot"), null);
+  const chaveSnapshot = chave(organizacaoId, "snapshot");
+  const bruto = lerJson<unknown>(armazenamento, chaveSnapshot, null);
+  const snapshot = normalizarSnapshot(bruto, organizacaoId);
+  if (snapshot) gravarJson(armazenamento, chaveSnapshot, snapshot);
+  return snapshot;
 }
 
 export function salvarSnapshot(
   snapshot: SnapshotOffline,
   armazenamento = armazenamentoNativo(),
 ) {
-  gravarJson(armazenamento, chave(snapshot.organizacaoId, "snapshot"), snapshot);
+  gravarJson(armazenamento, chave(snapshot.organizacaoId, "snapshot"), {
+    ...snapshot,
+    schemaVersao: SCHEMA_OFFLINE_ATUAL,
+  });
 }
 
 export function carregarFila(
   organizacaoId: string,
   armazenamento = armazenamentoNativo(),
 ): FilaOfflineItem[] {
-  return lerJson<FilaOfflineItem[]>(armazenamento, chave(organizacaoId, "fila"), []);
+  const chaveFila = chave(organizacaoId, "fila");
+  const bruto = lerJson<unknown>(armazenamento, chaveFila, []);
+  if (!Array.isArray(bruto)) return [];
+  const fila: FilaOfflineItem[] = [];
+  for (const entrada of bruto) {
+    const item = normalizarFilaItem(entrada, organizacaoId);
+    if (!item) return [];
+    fila.push(item);
+  }
+  gravarJson(armazenamento, chaveFila, fila);
+  return fila;
 }
 
 export function salvarFila(

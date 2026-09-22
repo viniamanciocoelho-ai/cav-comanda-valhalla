@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import {
   backoffMs,
   carregarFila,
+  carregarSnapshot,
   erroDeRede,
   estadoConfirmadoParaResumo,
   reaplicarAcao,
@@ -164,5 +165,106 @@ const pendenteComItem: Dados = {
 };
 const baseParaTotal = estadoConfirmadoParaResumo("offline", depois, pendenteComItem);
 assert.equal(baseParaTotal.itens.length, 0, "total offline não pode incluir item apenas local");
+
+const estadoLegado = {
+  mesas: [
+    {
+      organizacao_id: "valhalla",
+      mesa_id: 1,
+      status: "ocupada",
+      ativa: true,
+      pessoasFixas: 1,
+      totalFixo: 10,
+      abertaEm: "2026-09-20T20:00:00.000Z",
+      garcom_id: "g1",
+      contaSolicitada: false,
+      servicoIncluso: true,
+    },
+  ],
+  pessoas: [{ pessoa_id: "p-legada", nome: "Cliente legado", mesa_id: 1 }],
+  itens: [
+    {
+      organizacao_id: "valhalla",
+      item_id: "i-legado",
+      pedido_id: null,
+      mesa_id: 1,
+      pessoa_id: "p-legada",
+      produto_id: "p1",
+      name: "Suco",
+      price: 10,
+      quantidade: 1,
+      observacao: "",
+      destino_producao: "bar",
+      status: "novo",
+      funcionario_id: "g1",
+      funcionario_nome: "Garçom",
+      funcionario_perfil: "garcom",
+      criado_em: "2026-09-20T20:01:00.000Z",
+      enviado_em: null,
+      atualizado_em: "2026-09-20T20:01:00.000Z",
+    },
+  ],
+  tickets: [],
+  fechamentos: [],
+  encerramentos: [],
+  anteriores: {},
+};
+const snapshotLegado = {
+  organizacaoId: "valhalla",
+  versao: 7,
+  estado: estadoLegado,
+  cardapio: [],
+  produtos: [],
+  funcionarios: [],
+  impressoras: [],
+  impressoes: [],
+  quantidadeMesas: 1,
+  larguraRecibo: 58,
+  atualizadoEm: "2026-09-20T20:02:00.000Z",
+};
+armazenamento.setItem(
+  "cav-comanda-offline:v1:valhalla:snapshot",
+  JSON.stringify(snapshotLegado),
+);
+armazenamento.setItem(
+  "cav-comanda-offline:v1:valhalla:fila",
+  JSON.stringify([
+    {
+      id: "fila-legada",
+      organizacaoId: "valhalla",
+      acao: "alterar_comanda",
+      entidadeId: "1",
+      antes: estadoLegado,
+      depois: {
+        ...estadoLegado,
+        itens: [
+          {
+            ...estadoLegado.itens[0],
+            quantidade: 2,
+          },
+        ],
+      },
+      tentativas: 0,
+      proximaTentativaEm: 0,
+      criadoEm: "2026-09-20T20:03:00.000Z",
+    },
+  ]),
+);
+
+const snapshotMigrado = carregarSnapshot("valhalla", armazenamento);
+assert.equal(snapshotMigrado?.estado.balcoes.length, 4);
+assert.equal(snapshotMigrado?.estado.mesas[0]?.atendimento_id, "mesa:1:legado");
+assert.equal(snapshotMigrado?.estado.pessoas[0]?.atendimento_id, "mesa:1:legado");
+assert.equal(snapshotMigrado?.estado.itens[0]?.atendimento_id, "mesa:1:legado");
+assert.equal(snapshotMigrado?.estado.itens[0]?.balcao_id, null);
+
+const filaMigrada = carregarFila("valhalla", armazenamento);
+assert.equal(filaMigrada.length, 1, "a migração não pode descartar operação pendente");
+assert.equal(filaMigrada[0]?.antes.balcoes.length, 4);
+assert.equal(filaMigrada[0]?.depois.itens[0]?.quantidade, 2);
+assert.equal(
+  filaMigrada[0]?.depois.itens[0]?.atendimento_id,
+  "mesa:1:legado",
+);
 
 console.log("offline: fila persistente, backoff, rebase, falha de rede e total confirmado OK");

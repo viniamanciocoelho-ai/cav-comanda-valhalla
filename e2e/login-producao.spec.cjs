@@ -139,6 +139,117 @@ test("login por PIN renderiza a tela principal sem erros e permite sair", async 
   expect(erros).toEqual([]);
 });
 
+test("snapshot da versão anterior é migrado sem tela preta nem perda do rascunho", async ({
+  page,
+}) => {
+  const erros = [];
+  page.on("pageerror", (erro) => erros.push(`pageerror: ${erro.message}`));
+
+  await entrarComoGerencia(page);
+  await page.route("**/api/rpc/comanda/estado*", async (route) => {
+    await route.abort("internetdisconnected");
+  });
+  await page.evaluate(() => {
+    const chave = Object.keys(window.localStorage).find((item) =>
+      item.endsWith(":snapshot"),
+    );
+    if (!chave) throw new Error("Snapshot atual não foi gravado.");
+    const atual = JSON.parse(window.localStorage.getItem(chave));
+    const mesa = {
+      ...atual.estado.mesas[0],
+      status: "ocupada",
+      ativa: true,
+      abertaEm: "2026-09-20T20:00:00.000Z",
+      garcom_id: atual.funcionarios[0].funcionario_id,
+    };
+    delete mesa.atendimento_id;
+    const pessoa = {
+      pessoa_id: "p-legada",
+      nome: "Cliente legado",
+      mesa_id: mesa.mesa_id,
+    };
+    const item = {
+      organizacao_id: atual.organizacaoId,
+      item_id: "i-legado",
+      pedido_id: null,
+      mesa_id: mesa.mesa_id,
+      pessoa_id: pessoa.pessoa_id,
+      produto_id: atual.cardapio[0].produto_id,
+      name: atual.cardapio[0].name,
+      price: atual.cardapio[0].price,
+      quantidade: 1,
+      observacao: "",
+      destino_producao: atual.cardapio[0].destino_producao,
+      status: "novo",
+      funcionario_id: atual.funcionarios[0].funcionario_id,
+      funcionario_nome: atual.funcionarios[0].funcionario_nome,
+      funcionario_perfil: atual.funcionarios[0].funcionario_perfil,
+      criado_em: "2026-09-20T20:01:00.000Z",
+      enviado_em: null,
+      atualizado_em: "2026-09-20T20:01:00.000Z",
+    };
+    const legado = {
+      ...atual,
+      estado: {
+        mesas: [mesa, ...atual.estado.mesas.slice(1).map((registro) => {
+          const copia = { ...registro };
+          delete copia.atendimento_id;
+          return copia;
+        })],
+        pessoas: [pessoa],
+        itens: [item],
+        tickets: [],
+        fechamentos: [],
+        encerramentos: [],
+        anteriores: {},
+      },
+    };
+    window.localStorage.setItem(chave, JSON.stringify(legado));
+  });
+
+  await page.reload();
+  await page.waitForTimeout(200);
+
+  expect(erros).toEqual([]);
+  await expect(page.getByRole("heading", { name: "Visão do salão" })).toBeVisible();
+  await expect(page.getByTestId("mesa-1")).toContainText("Ocupada");
+  await expect(page.getByTestId("mesa-1")).toContainText("1 pessoa");
+  const migrado = await page.evaluate(() => {
+    const chave = Object.keys(window.localStorage).find((item) =>
+      item.endsWith(":snapshot"),
+    );
+    const snapshot = JSON.parse(window.localStorage.getItem(chave));
+    return {
+      balcoes: snapshot.estado.balcoes,
+      atendimentoMesa: snapshot.estado.mesas[0].atendimento_id,
+      atendimentoPessoa: snapshot.estado.pessoas[0].atendimento_id,
+      atendimentoItem: snapshot.estado.itens[0].atendimento_id,
+    };
+  });
+  expect(migrado.balcoes).toHaveLength(4);
+  expect(migrado.atendimentoMesa).toBe("mesa:1:legado");
+  expect(migrado.atendimentoPessoa).toBe("mesa:1:legado");
+  expect(migrado.atendimentoItem).toBe("mesa:1:legado");
+});
+
+test("storage indisponível mostra o login em vez de tela preta", async ({ page }) => {
+  const erros = [];
+  page.on("pageerror", (erro) => erros.push(`pageerror: ${erro.message}`));
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new DOMException("Storage indisponível", "SecurityError");
+      },
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByTestId("login-pin")).toBeVisible();
+  expect(erros).toEqual([]);
+});
+
 async function entrarComoGerencia(page) {
   await page.goto("/");
   await page.getByTestId("campo-pin").fill("8462");

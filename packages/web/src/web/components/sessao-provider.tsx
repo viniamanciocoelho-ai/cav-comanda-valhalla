@@ -1,6 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { Funcionario } from "../lib/types";
-import { client, SESSION_TOKEN_KEY } from "../lib/api";
+import {
+  client,
+  lerTokenSessao,
+  removerTokenSessao,
+  salvarTokenSessao,
+} from "../lib/api";
 import { carregarSessaoOffline, salvarSessaoOffline } from "../lib/offline";
 
 interface Sessao {
@@ -47,12 +52,10 @@ function estadoDaSessao(token: string) {
 export function SessaoProvider({ children }: { children: React.ReactNode }) {
   const [sessao, setSessao] = useState<Sessao | null>(null);
   const [estadoRestaurado, setEstadoRestaurado] = useState<EstadoRemoto | null>(null);
-  const [verificando, setVerificando] = useState(() =>
-    typeof window !== "undefined" && Boolean(window.localStorage.getItem(SESSION_TOKEN_KEY)),
-  );
+  const [verificando, setVerificando] = useState(() => Boolean(lerTokenSessao()));
 
   useEffect(() => {
-    const token = window.localStorage.getItem(SESSION_TOKEN_KEY);
+    const token = lerTokenSessao();
     if (!token) return;
     estadoDaSessao(token)
       .then((resultado) => {
@@ -73,7 +76,7 @@ export function SessaoProvider({ children }: { children: React.ReactNode }) {
         if (conhecida) {
           setSessao(conhecida);
         } else {
-          window.localStorage.removeItem(SESSION_TOKEN_KEY);
+          removerTokenSessao();
         }
       })
       .finally(() => setVerificando(false));
@@ -81,7 +84,7 @@ export function SessaoProvider({ children }: { children: React.ReactNode }) {
 
   async function entrar(organizacao: string, pin: string) {
     const resultado = await client.auth.login({ organizacao, pin });
-    window.localStorage.setItem(SESSION_TOKEN_KEY, resultado.token);
+    salvarTokenSessao(resultado.token);
     estadoEmCache = undefined;
     setEstadoRestaurado(null);
     salvarSessaoOffline(resultado);
@@ -90,10 +93,10 @@ export function SessaoProvider({ children }: { children: React.ReactNode }) {
   }
 
   function sair() {
-    const revogacao = window.localStorage.getItem(SESSION_TOKEN_KEY)
+    const revogacao = lerTokenSessao()
       ? client.auth.logout()
       : Promise.resolve();
-    window.localStorage.removeItem(SESSION_TOKEN_KEY);
+    removerTokenSessao();
     estadoEmCache = undefined;
     setEstadoRestaurado(null);
     setSessao(null);
@@ -101,7 +104,7 @@ export function SessaoProvider({ children }: { children: React.ReactNode }) {
   }
 
   const carregarEstadoInicial = useCallback(() => {
-    const token = window.localStorage.getItem(SESSION_TOKEN_KEY);
+    const token = lerTokenSessao();
     if (!token) return Promise.reject(new Error("Sessão não encontrada."));
     return estadoDaSessao(token);
   }, []);
