@@ -3,7 +3,7 @@ import { createRouterClient } from "../packages/web/node_modules/@orpc/server/di
 import { PIN_GERENCIA_TESTE, prepararBancoTeste } from "./test-database";
 
 await prepararBancoTeste("mesas-compartilhadas");
-const { router } = await import("../packages/web/src/api");
+const { default: app, router } = await import("../packages/web/src/api");
 
 const publico = createRouterClient(router, {
   context: { headers: new Headers() },
@@ -29,11 +29,31 @@ const sessaoDennis = await publico.auth.login({
   organizacao: "valhalla",
   pin: "5274",
 });
-const dennis = createRouterClient(router, {
+const dennisInterno = createRouterClient(router, {
   context: {
     headers: new Headers({ authorization: `Bearer ${sessaoDennis.token}` }),
   },
 });
+const { createORPCClient } = await import(
+  "../packages/web/node_modules/@orpc/client/dist/index.mjs"
+);
+const { RPCLink } = await import(
+  "../packages/web/node_modules/@orpc/client/dist/adapters/fetch/index.mjs"
+);
+let ultimoStatusHttp = 0;
+const dennis = createORPCClient(
+  new RPCLink({
+    url: "http://teste.local/api/rpc",
+    headers: () => ({
+      authorization: `Bearer ${sessaoDennis.token}`,
+    }),
+    fetch: async (request) => {
+      const resposta = await app.fetch(request);
+      ultimoStatusHttp = resposta.status;
+      return resposta;
+    },
+  }),
+);
 
 const estadoInicial = await gerencia.comanda.estado();
 const mesa08 = estadoInicial.estado.mesas.find((mesa) => mesa.mesa_id === 8);
@@ -105,6 +125,7 @@ const lancamento = await dennis.comanda.persistir({
   estado: comItem,
 });
 assert.equal(lancamento.versao, abertura.versao + 1);
+assert.equal(ultimoStatusHttp, 200);
 
 const pedidoId = "pd-m8-dennis";
 const enviado = await dennis.comanda.persistir({
@@ -152,6 +173,7 @@ const enviado = await dennis.comanda.persistir({
   },
 });
 assert.equal(enviado.versao, lancamento.versao + 1);
+assert.equal(ultimoStatusHttp, 200);
 
 const estadoAposEnvio = await dennis.comanda.estado();
 assert.equal(estadoAposEnvio.versao, enviado.versao);
@@ -179,7 +201,7 @@ const solicitacaoFechamento = {
 };
 await assert.rejects(
   () =>
-    dennis.comanda.persistir({
+    dennisInterno.comanda.persistir({
       versao: enviado.versao,
       acao: "solicitar_fechamento",
       entidadeId: "8",
