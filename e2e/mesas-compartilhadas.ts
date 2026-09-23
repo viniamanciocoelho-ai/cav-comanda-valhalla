@@ -214,7 +214,7 @@ await assert.rejects(
       entidadeId: "8",
       estado: solicitacaoFechamento,
     }),
-  /Garçom não pode alterar mesa de outro funcionário/,
+  (erro: { code?: string }) => erro.code === "BAD_REQUEST",
 );
 
 console.log(

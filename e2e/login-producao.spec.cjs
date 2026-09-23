@@ -4,6 +4,7 @@ const { existsSync } = require("node:fs");
 const { rm } = require("node:fs/promises");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { createClient } = require("@libsql/client");
 const { expect, test } = require("@playwright/test");
 
 const raiz = path.resolve(__dirname, "..");
@@ -256,6 +257,165 @@ async function entrarComoGerencia(page) {
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page.getByRole("heading", { name: "Visão do salão" })).toBeVisible();
 }
+
+async function abrirMesaSemNome(page, numero) {
+  await page.goto(`/mesa/${numero}`);
+  const abertura = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes("abrir_mesa"),
+  );
+  await page.getByTestId("abrir-mesa").click();
+  expect((await abertura).status()).toBe(200);
+  await expect(page.getByTestId("adicionar-item")).toBeVisible();
+}
+
+async function contarItensDaMesa(numero) {
+  const db = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
+  try {
+    const resultado = await db.execute({
+      sql: "SELECT count(*) AS total FROM itens_pedido WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", numero],
+    });
+    return Number(resultado.rows[0]?.total ?? 0);
+  } finally {
+    db.close();
+  }
+}
+
+test("mesa sem nome recebe item compartilhado e aparece na segunda sessão", async ({ page, browser }) => {
+  const erros = [];
+  page.on("pageerror", (erro) => erros.push(erro.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await entrarComoGerencia(page);
+  await page.goto("/mesa/1");
+  await page.getByTestId("abrir-mesa").click();
+  await expect(page.getByTestId("adicionar-item")).toBeVisible();
+  await expect(page.getByText("0 pessoas", { exact: false })).toBeVisible();
+  await page.getByTestId("adicionar-item").click();
+  await expect(page.getByTestId("destinatario-Compartilhado")).toHaveAttribute("aria-pressed", "true");
+  const confirmacao = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes("alterar_comanda"),
+  );
+  await page.locator('[data-testid^="add-"]').first().click();
+  const respostaItem = await confirmacao;
+  expect(respostaItem.status()).toBe(200);
+  const segundaAdicao = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes("alterar_comanda"),
+  );
+  await page.locator('[data-testid^="add-"]').first().click();
+  expect((await segundaAdicao).status()).toBe(200);
+  await expect(page.getByTestId("status-conexao")).toContainText("Sincronizado");
+  await page.reload();
+  await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid^="item-"]')).toContainText("2×");
+  await page.getByTestId("aba-Compart.").click();
+  await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
+
+  const outraSessao = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    const outraPagina = await outraSessao.newPage();
+    await entrarComoGerencia(outraPagina);
+    await outraPagina.goto("/mesa/1");
+    await expect(outraPagina.locator('[data-testid^="item-"]')).toHaveCount(1);
+    await expect(outraPagina.locator('[data-testid^="item-"]')).toContainText("2×");
+  } finally {
+    await outraSessao.close();
+  }
+  expect(erros).toEqual([]);
+});
+
+test("resposta perdida apos gravar item nao duplica pedido", async ({ page }) => {
+  await entrarComoGerencia(page);
+  await abrirMesaSemNome(page, 2);
+  let gravacoes = 0;
+  await page.route("**/api/rpc/comanda/persistir", async (route) => {
+    if (!route.request().postData()?.includes("alterar_comanda")) {
+      await route.continue();
+      return;
+    }
+    gravacoes += 1;
+    const resposta = await route.fetch();
+    expect(resposta.status()).toBe(200);
+    await route.abort("failed");
+  });
+  await page.getByTestId("adicionar-item").click();
+  await page.locator('[data-testid^="add-"]').first().click();
+  await expect(page.getByTestId("status-conexao")).toContainText("Sincronizado");
+  await expect.poll(() => contarItensDaMesa(2)).toBe(1);
+  await page.reload();
+  await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
+  expect(gravacoes).toBe(1);
+});
+
+test("falha antes de gravar preserva intencao sem reenviar sozinha", async ({ page }) => {
+  await entrarComoGerencia(page);
+  await abrirMesaSemNome(page, 3);
+  let gravacoes = 0;
+  await page.route("**/api/rpc/comanda/persistir", async (route) => {
+    if (!route.request().postData()?.includes("alterar_comanda")) {
+      await route.continue();
+      return;
+    }
+    gravacoes += 1;
+    await route.abort("failed");
+  });
+  await page.getByTestId("adicionar-item").click();
+  await page.locator('[data-testid^="add-"]').first().click();
+  await expect(page.getByTestId("status-conexao")).toContainText("Aguardando confirmação");
+  await page.waitForTimeout(3_500);
+  expect(gravacoes).toBe(1);
+  expect(await contarItensDaMesa(3)).toBe(0);
+  await page.reload();
+  await expect(page.getByTestId("status-conexao")).toContainText("Aguardando confirmação");
+  await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
+  expect(gravacoes).toBe(1);
+});
+
+test("resposta perdida no envio nao duplica ficha nem fila de impressao", async ({ page }) => {
+  await entrarComoGerencia(page);
+  await abrirMesaSemNome(page, 4);
+  await page.getByTestId("adicionar-item").click();
+  const inclusao = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes("alterar_comanda"),
+  );
+  await page.locator('[data-testid^="add-"]').first().click();
+  expect((await inclusao).status()).toBe(200);
+  await page.getByTestId("concluir-cardapio").click();
+  let envios = 0;
+  await page.route("**/api/rpc/comanda/persistir", async (route) => {
+    if (!route.request().postData()?.includes('"enviar_pedido"')) {
+      await route.continue();
+      return;
+    }
+    envios += 1;
+    const resposta = await route.fetch();
+    expect(resposta.status()).toBe(200);
+    await route.abort("failed");
+  });
+  await page.getByTestId("enviar-pedido").click();
+  await expect(page.getByTestId("status-conexao")).toContainText("Sincronizado");
+  const db = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
+  try {
+    const fichas = await db.execute({
+      sql: "SELECT count(*) AS total FROM fichas_producao WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 4],
+    });
+    const impressoes = await db.execute({
+      sql: "SELECT count(*) AS total FROM fila_impressoes WHERE organizacao_id = ? AND mesa_id = ? AND tipo = ?",
+      args: ["valhalla", 4, "ficha"],
+    });
+    expect(Number(fichas.rows[0]?.total)).toBe(1);
+    expect(Number(impressoes.rows[0]?.total)).toBe(1);
+  } finally {
+    db.close();
+  }
+  await page.reload();
+  await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
+  expect(envios).toBe(1);
+});
 
 function instalarBluetoothSimulado(page, { gravavel = true } = {}) {
   return page.addInitScript(

@@ -34,8 +34,9 @@ export function MenuSheet({
     adicionarItemAtendimento,
     notificar,
     cardapio,
+    mesas,
   } = useComanda();
-  const idAtendimento = atendimento_id ?? null;
+  const idAtendimento = atendimento_id ?? mesas.find((mesa) => mesa.mesa_id === mesa_id)?.atendimento_id ?? null;
   const pessoas =
     idAtendimento !== null
       ? pessoasDoAtendimento(idAtendimento)
@@ -85,28 +86,28 @@ export function MenuSheet({
   }
 
   function adicionar(item: MenuItem) {
-    if (idAtendimento !== null) {
-      adicionarItemAtendimento({
+    const adicionou = idAtendimento !== null
+      ? adicionarItemAtendimento({
         atendimento_id: idAtendimento,
         pessoa_id: destinoAtual,
         produto: item,
         quantidade,
         observacao,
-      });
-    } else if (mesa_id !== undefined) {
-      adicionarItem({ mesa_id, pessoa_id: destinoAtual, produto: item, quantidade, observacao });
-    } else {
+      })
+      : mesa_id !== undefined
+        ? adicionarItem({ mesa_id, pessoa_id: destinoAtual, produto: item, quantidade, observacao })
+        : false;
+    if (!adicionou) {
+      notificar("Não foi possível preparar o item nesta comanda.", "atencao");
       return;
     }
     setAdicionados((n) => n + quantidade);
     notificar(
-      `${quantidade}× ${item.name} lançado para ${
+      `${quantidade}× ${item.name} adicionado; aguardando confirmação para ${
         destinoAtual === compartilhado ? "a mesa (compartilhado)" : nomeSelecionado
       }${observacao.trim() ? ` · ${observacao.trim()}` : ""}.`,
-      "sucesso",
+      "info",
     );
-    setQuantidade(1);
-    setObservacao("");
   }
 
   function fechar() {
@@ -128,7 +129,7 @@ export function MenuSheet({
         <div className="flex items-center justify-between gap-3">
           <p className="text-muted text-[12px]">
             {adicionados
-              ? `${adicionados} ${adicionados === 1 ? "item lançado" : "itens lançados"} nesta abertura`
+              ? `${adicionados} ${adicionados === 1 ? "adição solicitada" : "adições solicitadas"} nesta abertura`
               : "Nenhum item lançado ainda"}
           </p>
           <Action variante="primaria" onClick={fechar} data-testid="concluir-cardapio">

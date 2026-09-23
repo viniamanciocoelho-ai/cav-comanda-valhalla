@@ -243,7 +243,7 @@ export default function MesaPage() {
   const pessoas = pessoasDaMesa(mesa_id);
   const itens = itensDaMesa(mesa_id);
   const conta = resumo(mesa_id);
-  const compartilhado = compartilhadoId(mesa_id);
+  const compartilhado = compartilhadoId(mesa?.atendimento_id ?? mesa_id);
   const podeLancar = perfilAtivo === "garcom" || perfilAtivo === "gerencia";
   const enviando = enviandoMesa === mesa_id || envio.processando;
   const fechando = fechamento.processando;
@@ -397,7 +397,7 @@ export default function MesaPage() {
   }
 
   const subtitulo = mesa.ativa
-    ? `${pessoas.length} ${pessoas.length === 1 ? "pessoa" : "pessoas"} · aberta há ${desde(mesa.abertaEm)} · consumo separado por pessoa`
+    ? `${pessoas.length} ${pessoas.length === 1 ? "pessoa" : "pessoas"} · aberta há ${desde(mesa.abertaEm)} · ${pessoas.length ? "consumo separado por pessoa" : "consumo compartilhado"}`
     : "Mesa livre";
 
   return (
@@ -445,7 +445,7 @@ export default function MesaPage() {
                 variante="primaria"
                 onClick={() => {
                   abrirMesa(mesa_id);
-                  notificar(`Mesa ${mesaLabel(mesa_id)} aberta.`, "sucesso");
+                  notificar(`Abertura da mesa ${mesaLabel(mesa_id)} aguardando confirmação.`, "info");
                 }}
                 data-testid="abrir-mesa"
               >
