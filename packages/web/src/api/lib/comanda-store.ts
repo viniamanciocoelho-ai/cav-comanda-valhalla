@@ -854,8 +854,30 @@ export function validarTransicao(
   funcionariosAtivos: Funcionario[] = [funcionario],
 ) {
   const serializar = (valor: unknown) => JSON.stringify(valor);
-  const iguais = (chave: keyof EstadoPersistido) =>
-    serializar(anterior[chave]) === serializar(proximo[chave]);
+  const idsColecao = {
+    mesas: "mesa_id",
+    balcoes: "balcao_id",
+    pessoas: "pessoa_id",
+    itens: "item_id",
+    tickets: "ticket_id",
+    fechamentos: "fechamento_id",
+    encerramentos: "encerramento_id",
+  } as const;
+  const iguais = (chave: keyof EstadoPersistido) => {
+    if (chave === "anteriores") {
+      const antes = anterior.anteriores;
+      const depois = proximo.anteriores;
+      return Object.keys(antes).length === Object.keys(depois).length &&
+        Object.entries(antes).every(([id, status]) => depois[id] === status);
+    }
+    const id = idsColecao[chave];
+    const antes = anterior[chave] as unknown as Record<string, unknown>[];
+    const depois = proximo[chave] as unknown as Record<string, unknown>[];
+    if (antes.length !== depois.length) return false;
+    const mapa = new Map(depois.map((registro) => [registro[id], registro]));
+    return mapa.size === antes.length && antes.every((registro) =>
+      serializar(registro) === serializar(mapa.get(registro[id])));
+  };
   const colecoesPermitidas: Record<string, (keyof EstadoPersistido)[]> = {
     abrir_mesa: ["mesas"],
     abrir_balcao: ["balcoes", "pessoas"],
@@ -1993,6 +2015,13 @@ export function validarTransicao(
   }
 }
 
+export class EstadoInvalidoError extends Error {
+  constructor() {
+    super("Transição operacional inválida.");
+    this.name = "EstadoInvalidoError";
+  }
+}
+
 export async function salvarEstado(
   organizacaoId: string,
   esperado: number,
@@ -2002,41 +2031,46 @@ export async function salvarEstado(
   entidadeId?: string,
 ) {
   const leituraAnterior = await lerEstado(organizacaoId);
+  if (leituraAnterior.versao !== esperado) return null;
   const anterior = leituraAnterior.estado;
   const cardapio = new Map(
     leituraAnterior.cardapio.map((produto) => [produto.produto_id, produto]),
   );
-  for (const item of estado.itens) {
-    const anteriorItem = anterior.itens.find(
-      (registro) => registro.item_id === item.item_id,
+  try {
+    for (const item of estado.itens) {
+      const anteriorItem = anterior.itens.find(
+        (registro) => registro.item_id === item.item_id,
+      );
+      const produto = cardapio.get(item.produto_id);
+      if (
+        anteriorItem &&
+        (item.produto_id !== anteriorItem.produto_id ||
+          item.name !== anteriorItem.name ||
+          centavos(item.price) !== centavos(anteriorItem.price) ||
+          item.destino_producao !== anteriorItem.destino_producao)
+      ) {
+        throw new EstadoInvalidoError();
+      }
+      if (
+        !anteriorItem &&
+        (!produto ||
+          item.name !== produto.name ||
+          centavos(item.price) !== centavos(produto.price) ||
+          item.destino_producao !== produto.destino_producao)
+      ) {
+        throw new EstadoInvalidoError();
+      }
+    }
+    validarTransicao(
+      anterior,
+      estado,
+      auditor,
+      acao,
+      leituraAnterior.funcionarios,
     );
-    const produto = cardapio.get(item.produto_id);
-    if (
-      anteriorItem &&
-      (item.produto_id !== anteriorItem.produto_id ||
-        item.name !== anteriorItem.name ||
-        centavos(item.price) !== centavos(anteriorItem.price) ||
-        item.destino_producao !== anteriorItem.destino_producao)
-    ) {
-      throw new Error("Dados comerciais de item existente não podem ser alterados.");
-    }
-    if (
-      !anteriorItem &&
-      (!produto ||
-        item.name !== produto.name ||
-        centavos(item.price) !== centavos(produto.price) ||
-        item.destino_producao !== produto.destino_producao)
-    ) {
-      throw new Error("Item não corresponde ao cardápio da organização.");
-    }
+  } catch {
+    throw new EstadoInvalidoError();
   }
-  validarTransicao(
-    anterior,
-    estado,
-    auditor,
-    acao,
-    leituraAnterior.funcionarios,
-  );
   const resultado = await db.transaction(async (tx) => {
     const proxima = esperado + 1;
     const instante = agora();

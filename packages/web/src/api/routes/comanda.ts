@@ -4,6 +4,7 @@ import { base } from "../__core/app";
 import {
   alterarPinProprio,
   autenticar,
+  EstadoInvalidoError,
   lerEstado,
   obterSessao,
   revogarSessao,
@@ -149,6 +150,7 @@ export const persistir = autenticado
       versao: z.number().int().nonnegative(),
       acao: z.enum(acoes),
       entidadeId: z.string().trim().max(120).optional(),
+      operacaoId: z.string().uuid().optional(),
       estado: z.unknown(),
     }),
   )
@@ -180,14 +182,41 @@ export const persistir = autenticado
     ) {
       throw new ORPCError("BAD_REQUEST", { message: "Estado inválido para a organização." });
     }
-    const versao = await salvarEstado(
-      context.sessao.organizacaoId,
-      input.versao,
-      estadoRecebido,
-      context.sessao.funcionario,
-      input.acao,
-      input.entidadeId,
-    );
+    const inicio = performance.now();
+    let versao: number | null;
+    try {
+      versao = await salvarEstado(
+        context.sessao.organizacaoId,
+        input.versao,
+        estadoRecebido,
+        context.sessao.funcionario,
+        input.acao,
+        input.entidadeId,
+      );
+    } catch (erro) {
+      if (input.operacaoId) {
+        console.warn("comanda.persistir", {
+          operacaoId: input.operacaoId,
+          acao: input.acao,
+          etapa: erro instanceof EstadoInvalidoError ? "validacao" : "gravacao",
+          codigo: erro instanceof EstadoInvalidoError ? "BAD_REQUEST" : "INTERNAL_SERVER_ERROR",
+          duracaoMs: Math.round(performance.now() - inicio),
+        });
+      }
+      if (erro instanceof EstadoInvalidoError) {
+        throw new ORPCError("BAD_REQUEST", { message: "Transição operacional inválida." });
+      }
+      throw erro;
+    }
+    if (input.operacaoId) {
+      console.info("comanda.persistir", {
+        operacaoId: input.operacaoId,
+        acao: input.acao,
+        etapa: "transacao",
+        resultado: versao === null ? "conflito" : "gravado",
+        duracaoMs: Math.round(performance.now() - inicio),
+      });
+    }
     if (versao === null) {
       throw new ORPCError("CONFLICT", {
         message: "O salão foi atualizado em outro dispositivo. Recarregue o estado.",

@@ -228,16 +228,21 @@ function StatusConexao() {
   } = useComanda();
   const pendente = conectividade === "pendente";
   const offline = conectividade === "offline";
-  const texto = offline
+  const incerto = conectividade === "incerto";
+  const texto = incerto
+    ? "Aguardando confirmação"
+    : offline
     ? "Sem conexão"
     : pendente
-      ? `Pendente · ${acoesPendentes} ${acoesPendentes === 1 ? "ação" : "ações"}`
+      ? acoesPendentes
+        ? `Pendente · ${acoesPendentes} ${acoesPendentes === 1 ? "ação" : "ações"}`
+        : "Salvando"
       : "Sincronizado";
 
   return (
     <section
       className={`mb-4 grid gap-2 rounded-md border px-3 py-2 text-[12px] ${
-        offline
+        offline || incerto
           ? "border-ember/60 bg-ember/10 text-parchment"
           : pendente
             ? "border-gold/60 bg-gold/10 text-parchment"
@@ -249,18 +254,18 @@ function StatusConexao() {
       <div className="flex min-w-0 items-center gap-2">
         {offline ? <WifiOff className="size-4 shrink-0" /> : null}
         <span className="font-display tracking-[0.1em] uppercase">{texto}</span>
-        {offline ? (
+        {offline || incerto ? (
           <button
             type="button"
             onClick={() => void reconectar()}
             className="text-gold ml-auto inline-flex min-h-8 items-center gap-1 rounded-md px-2 hover:bg-surface-2"
           >
             <RefreshCw className="size-3.5" />
-            Tentar novamente
+            {incerto ? "Verificar" : "Tentar novamente"}
           </button>
         ) : null}
       </div>
-      {offline && ultimaInformacaoEm ? (
+      {(offline || incerto) && ultimaInformacaoEm ? (
         <p className="text-muted">
           Última informação conhecida:{" "}
           {new Date(ultimaInformacaoEm).toLocaleString("pt-BR", {

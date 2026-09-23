@@ -29,12 +29,10 @@ import {
 } from "../lib/impressao-local";
 import { serializarEscPos } from "../lib/recibo";
 import {
-  backoffMs,
   carregarFalhas,
   carregarFila,
   carregarSnapshot,
   codigoDoErro,
-  erroDeRede,
   estadoConfirmadoParaResumo,
   type Conectividade,
   type FilaOfflineItem,
@@ -44,6 +42,11 @@ import {
   salvarFila,
   salvarSnapshot,
 } from "../lib/offline";
+import {
+  confirmarAlteracao,
+  ConflitoAlteracaoError,
+  ResultadoAlteracaoDesconhecidoError,
+} from "../lib/persistencia";
 import { useSessao } from "./sessao-provider";
 import type {
   ConfiguracaoImpressora,
@@ -194,8 +197,8 @@ interface ComandaState {
   abrirMesa: (mesa_id: number) => void;
   abrirBalcao: (balcao_id: number) => void;
   adicionarPessoa: (mesa_id: number, nome: string) => Pessoa | null;
-  adicionarItem: (novo: NovoItem) => void;
-  adicionarItemAtendimento: (novo: NovoItemAtendimento) => void;
+  adicionarItem: (novo: NovoItem) => boolean;
+  adicionarItemAtendimento: (novo: NovoItemAtendimento) => boolean;
   alterarQuantidade: (item_id: string, delta: number) => void;
   definirObservacao: (item_id: string, texto: string) => void;
   removerItem: (item_id: string) => void;
@@ -334,6 +337,33 @@ function eAcaoOffline(
   funcionario: Funcionario,
 ) {
   return funcionario.funcionario_perfil === "garcom" && ACOES_OFFLINE.has(acao);
+}
+
+function confirmarRegistro(
+  registro: FilaOfflineItem,
+  versao: number,
+  baseConfirmada: Dados,
+  somenteConciliar = false,
+) {
+  return confirmarAlteracao({
+    alteracao: {
+      operacaoId: registro.id,
+      versao,
+      acao: registro.acao,
+      entidadeId: registro.entidadeId,
+      antes: registro.antes,
+      depois: registro.depois,
+    },
+    baseConfirmada,
+    somenteConciliar,
+    persistir: (entrada) => client.comanda.persistir({
+      ...entrada,
+      ...(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(registro.id)
+        ? { operacaoId: registro.id }
+        : {}),
+    }),
+    carregarEstado: () => client.comanda.estado(),
+  });
 }
 
 /** Identifica a abertura da mesa: base da idempotencia do encerramento sem consumo. */
@@ -493,6 +523,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const escritasPendentes = useRef(0);
   const epocaPersistencia = useRef(0);
   const filaPersistencia = useRef<Promise<void>>(Promise.resolve());
+  const pendentesOnline = useRef<FilaOfflineItem[]>([]);
   const estadoConfirmado = useRef<Dados>(estadoInicial());
   const [filaInicial] = useState(() => carregarFila(organizacaoId));
   const filaOffline = useRef<FilaOfflineItem[]>(filaInicial);
@@ -501,7 +532,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   );
   const [acoesPendentes, setAcoesPendentes] = useState(filaInicial.length);
   const [conectividade, setConectividade] = useState<Conectividade>(
-    filaInicial.length ? "pendente" : "sincronizado",
+    filaInicial.some((item) => item.resultadoIncerto)
+      ? "incerto"
+      : filaInicial.length ? "pendente" : "sincronizado",
   );
   const [falhasOffline, setFalhasOffline] = useState(() => carregarFalhas(organizacaoId));
   const [ultimaInformacaoEm, setUltimaInformacaoEm] = useState<string | null>(null);
@@ -530,6 +563,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
 
   const aplicarRemoto = useCallback(
     (remoto: Awaited<ReturnType<typeof client.comanda.estado>>) => {
+      if (remoto.versao < versao.current) return;
       const base = remoto.estado as Dados;
       estadoConfirmado.current = base;
       setDadosConfirmados(base);
@@ -546,7 +580,11 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       setImpressorasAtuais(remoto.impressoras);
       setImpressoesAtuais(remoto.impressoes);
       setUltimaInformacaoEm(new Date().toISOString());
-      setConectividade(filaOffline.current.length ? "pendente" : "sincronizado");
+      setConectividade(
+        filaOffline.current.some((item) => item.resultadoIncerto)
+          ? "incerto"
+          : filaOffline.current.length ? "pendente" : "sincronizado",
+      );
       salvarSnapshot({
         organizacaoId,
         versao: remoto.versao,
@@ -601,9 +639,12 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         setCarregando(false);
         throw erro;
       }
-      estadoConfirmado.current = snapshot.estado;
-      versao.current = snapshot.versao;
-      let local = snapshot.estado;
+      const base = snapshot.versao >= versao.current
+        ? snapshot.estado
+        : estadoConfirmado.current;
+      estadoConfirmado.current = base;
+      versao.current = Math.max(versao.current, snapshot.versao);
+      let local = base;
       for (const acao of filaOffline.current) local = reaplicarAcao(local, acao).estado;
       espelho.current = local;
       setDados(local);
@@ -615,7 +656,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       setQuantidadeMesas(snapshot.quantidadeMesas);
       setLarguraRecibo(snapshot.larguraRecibo);
       setUltimaInformacaoEm(snapshot.atualizadoEm);
-      setConectividade("offline");
+      setConectividade(
+        filaOffline.current.some((item) => item.resultadoIncerto) ? "incerto" : "offline",
+      );
       hidratado.current = true;
       setCarregando(false);
       throw erro;
@@ -643,90 +686,100 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           break;
         }
         try {
-          const resultado = await client.comanda.persistir({
-            versao: versao.current,
-            acao: atual.acao,
-            entidadeId: atual.entidadeId,
-            estado: atual.depois,
-          });
+          escritasPendentes.current += 1;
+          const resultado = await confirmarRegistro(
+            atual,
+            versao.current,
+            estadoConfirmado.current,
+            atual.resultadoIncerto === true,
+          );
           versao.current = resultado.versao;
-          estadoConfirmado.current = atual.depois;
-          setDadosConfirmados(atual.depois);
+          estadoConfirmado.current = resultado.estado;
+          setDadosConfirmados(resultado.estado);
           filaOffline.current = filaOffline.current.slice(1);
           salvarFila(organizacaoId, filaOffline.current);
           setAcoesPendentes(filaOffline.current.length);
-          setConectividade(filaOffline.current.length ? "pendente" : "sincronizado");
-          setDados(atual.depois);
-          espelho.current = atual.depois;
-        } catch (erro) {
-          const codigo = codigoDoErro(erro);
-          if (codigo === "CONFLICT" || /atualizado em outro dispositivo|conflict/i.test(String(erro))) {
-            try {
-              const remoto = await consultarRemoto();
-              aplicarRemoto(remoto);
-              const rebase = reaplicarAcao(remoto.estado as Dados, atual);
-              if (rebase.conflitos.length) {
-                const falha = {
-                  id: atual.id,
-                  acao: atual.acao,
-                  mensagem: "A operação entrou em conflito com uma alteração feita em outro dispositivo.",
-                  itens: nomesDosItensAlterados(atual),
-                  criadoEm: new Date().toISOString(),
-                };
-                const falhas = [...falhasOffline, falha].slice(-20);
-                setFalhasOffline(falhas);
-                salvarFalhas(organizacaoId, falhas);
-                filaOffline.current = filaOffline.current.slice(1);
-                salvarFila(organizacaoId, filaOffline.current);
-                setAcoesPendentes(filaOffline.current.length);
-                setConectividade(filaOffline.current.length ? "pendente" : "sincronizado");
-                continue;
-              }
-              const atualizado = { ...atual, antes: remoto.estado as Dados, depois: rebase.estado };
-              filaOffline.current = [atualizado, ...filaOffline.current.slice(1)];
-              salvarFila(organizacaoId, filaOffline.current);
-              continue;
-            } catch {
-              setConectividade("offline");
-              break;
-            }
+          setConectividade(
+            filaOffline.current.some((item) => item.resultadoIncerto)
+              ? "incerto" : filaOffline.current.length ? "pendente" : "sincronizado",
+          );
+          let local = resultado.estado;
+          for (const pendente of filaOffline.current) {
+            local = reaplicarAcao(local, pendente).estado;
           }
-          if (erroDeRede(erro)) {
-            const atualizado = {
-              ...atual,
-              tentativas: atual.tentativas + 1,
-              proximaTentativaEm: Date.now() + backoffMs(atual.tentativas),
-            };
-            filaOffline.current = [atualizado, ...filaOffline.current.slice(1)];
+          setDados(local);
+          espelho.current = local;
+        } catch (erro) {
+          if (erro instanceof ResultadoAlteracaoDesconhecidoError) {
+            filaOffline.current = [
+              { ...atual, resultadoIncerto: true },
+              ...filaOffline.current.slice(1),
+            ];
             salvarFila(organizacaoId, filaOffline.current);
-            setConectividade("offline");
+            setConectividade("incerto");
+            if (!atual.resultadoIncerto) {
+              const texto = "A alteração está aguardando confirmação. Confira a comanda antes de repetir.";
+              console.warn("comanda.persistir", {
+                operacaoId: atual.id,
+                acao: atual.acao,
+                etapa: "confirmacao",
+                codigo: "RESULTADO_DESCONHECIDO",
+              });
+              setToasts((toasts) => [
+                ...toasts.filter((toast) => toast.text !== texto).slice(-2),
+                { id: Date.now() + Math.random(), text: texto, tone: "atencao" },
+              ]);
+            }
             break;
           }
           const falha = {
             id: atual.id,
             acao: atual.acao,
-            mensagem: erro instanceof Error ? erro.message : "O servidor recusou a operação.",
+            mensagem: erro instanceof ConflitoAlteracaoError
+              ? "A operação entrou em conflito com uma alteração feita em outro dispositivo."
+              : "O servidor recusou a operação. Confira a comanda antes de tentar novamente.",
             itens: nomesDosItensAlterados(atual),
             criadoEm: new Date().toISOString(),
           };
-          const falhas = [...falhasOffline, falha].slice(-20);
-          setFalhasOffline(falhas);
-          salvarFalhas(organizacaoId, falhas);
+          setFalhasOffline((atual) => {
+            const falhas = [...atual, falha].slice(-20);
+            salvarFalhas(organizacaoId, falhas);
+            return falhas;
+          });
           filaOffline.current = filaOffline.current.slice(1);
           salvarFila(organizacaoId, filaOffline.current);
           setAcoesPendentes(filaOffline.current.length);
-          const remoto = await consultarRemoto().catch(() => null);
-          if (remoto) aplicarRemoto(remoto);
+          if (atual.acao === "enviar_pedido") pedidosEnviados.current.clear();
+          const remoto = await client.comanda.estado().catch(() => null);
+          if (remoto) {
+            aplicarRemoto(remoto);
+          } else {
+            let local = estadoConfirmado.current;
+            for (const pendente of filaOffline.current) {
+              local = reaplicarAcao(local, pendente).estado;
+            }
+            espelho.current = local;
+            setDados(local);
+            setConectividade("offline");
+          }
+          console.warn("comanda.persistir", {
+            operacaoId: atual.id,
+            acao: atual.acao,
+            etapa: "gravacao",
+            codigo: codigoDoErro(erro) ?? "CONFLITO_LOCAL",
+          });
           setToasts((atualToasts) => [
-            ...atualToasts.slice(-2),
+            ...atualToasts.filter((toast) => toast.text !== falha.mensagem).slice(-2),
             { id: Date.now() + Math.random(), text: falha.mensagem, tone: "atencao" },
           ]);
+        } finally {
+          escritasPendentes.current = Math.max(0, escritasPendentes.current - 1);
         }
       }
     } finally {
       drenandoFila.current = false;
     }
-  }, [aplicarRemoto, consultarRemoto, falhasOffline, organizacaoId]);
+  }, [aplicarRemoto, organizacaoId]);
 
   useEffect(() => {
     const snapshot = carregarSnapshot(organizacaoId);
@@ -735,8 +788,10 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       // oxlint-disable-next-line react/set-state-in-effect
       setDadosConfirmados(snapshot.estado);
       versao.current = snapshot.versao;
-      espelho.current = snapshot.estado;
-      setDados(snapshot.estado);
+      let local = snapshot.estado;
+      for (const acao of filaOffline.current) local = reaplicarAcao(local, acao).estado;
+      espelho.current = local;
+      setDados(local);
       setCardapioAtual(snapshot.cardapio);
       setProdutosAtuais(snapshot.produtos);
       setFuncionariosAtuais(snapshot.funcionarios);
@@ -745,7 +800,9 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       setQuantidadeMesas(snapshot.quantidadeMesas);
       setLarguraRecibo(snapshot.larguraRecibo);
       setUltimaInformacaoEm(snapshot.atualizadoEm);
-      setConectividade("offline");
+      setConectividade(
+        filaOffline.current.some((item) => item.resultadoIncerto) ? "incerto" : "offline",
+      );
       hidratado.current = true;
       setCarregando(false);
     }
@@ -786,58 +843,103 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       antes: Dados,
     ) => {
       if (!hidratado.current) return;
-      if (eAcaoOffline(acao, funcionarioAtivo)) {
-        const registro: FilaOfflineItem = {
-          id: `${organizacaoId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          organizacaoId,
-          acao,
-          entidadeId: proximo.mesas.find((mesa) => mesa.status !== "livre")?.mesa_id.toString(),
-          antes,
-          depois: proximo,
-          tentativas: 0,
-          proximaTentativaEm: 0,
-          criadoEm: new Date().toISOString(),
-        };
+      const registro: FilaOfflineItem = {
+        id: crypto.randomUUID(),
+        organizacaoId,
+        acao,
+        entidadeId: proximo.mesas.find((mesa) => mesa.status !== "livre")?.mesa_id.toString(),
+        antes,
+        depois: proximo,
+        tentativas: 0,
+        proximaTentativaEm: 0,
+        criadoEm: new Date().toISOString(),
+      };
+      if (eAcaoOffline(acao, funcionarioAtivo) || filaOffline.current.length) {
         filaOffline.current = [...filaOffline.current, registro];
         salvarFila(organizacaoId, filaOffline.current);
         setAcoesPendentes(filaOffline.current.length);
-        setConectividade("pendente");
+        setConectividade(
+          filaOffline.current.some((item) => item.resultadoIncerto) ? "incerto" : "pendente",
+        );
         void drenarFila();
         return;
       }
+      pendentesOnline.current = [...pendentesOnline.current, registro];
+      setConectividade("pendente");
       const epoca = epocaPersistencia.current;
       escritasPendentes.current += 1;
       filaPersistencia.current = filaPersistencia.current
         .then(async () => {
           if (epoca !== epocaPersistencia.current) return;
-          const resultado = await client.comanda.persistir({
-            versao: versao.current,
-            acao,
-            entidadeId: proximo.mesas.find((mesa) => mesa.status !== "livre")?.mesa_id.toString(),
-            estado: proximo,
-          });
+          const resultado = await confirmarRegistro(
+            registro,
+            versao.current,
+            estadoConfirmado.current,
+          );
           versao.current = resultado.versao;
-          estadoConfirmado.current = proximo;
-          setDadosConfirmados(proximo);
-          setConectividade("sincronizado");
+          estadoConfirmado.current = resultado.estado;
+          setDadosConfirmados(resultado.estado);
+          pendentesOnline.current = pendentesOnline.current.filter((item) => item.id !== registro.id);
+          if (!pendentesOnline.current.length) {
+            espelho.current = resultado.estado;
+            setDados(resultado.estado);
+          }
+          setConectividade(pendentesOnline.current.length ? "pendente" : "sincronizado");
         })
-        .catch(async () => {
+        .catch(async (erro) => {
           epocaPersistencia.current += 1;
+          const pendentes = pendentesOnline.current;
+          pendentesOnline.current = [];
           pedidosEnviados.current.clear();
           travaEnvio.current.clear();
           travaTicket.current.clear();
           setEnviandoMesa(null);
           setEnviandoAtendimento(null);
-          setConectividade("offline");
+          const incerto = erro instanceof ResultadoAlteracaoDesconhecidoError;
+          if (!incerto) {
+            const falha = {
+              id: registro.id,
+              acao,
+              mensagem: erro instanceof ConflitoAlteracaoError
+                ? "A operação entrou em conflito com outra alteração na comanda."
+                : "O servidor recusou a alteração. Confira a comanda antes de tentar novamente.",
+              itens: nomesDosItensAlterados(registro),
+              criadoEm: new Date().toISOString(),
+            };
+            setFalhasOffline((atual) => {
+              const falhas = [...atual, falha].slice(-20);
+              salvarFalhas(organizacaoId, falhas);
+              return falhas;
+            });
+          }
+          filaOffline.current = [
+            ...pendentes
+              .filter((item) => incerto || item.id !== registro.id)
+              .map((item) => item.id === registro.id ? { ...item, resultadoIncerto: true } : item),
+            ...filaOffline.current,
+          ];
+          salvarFila(organizacaoId, filaOffline.current);
+          setAcoesPendentes(filaOffline.current.length);
+          setConectividade(incerto ? "incerto" : "pendente");
+          const texto = incerto
+            ? "A alteração está aguardando confirmação. Confira a comanda antes de repetir."
+            : "A alteração foi recusada. Confira a comanda antes de tentar novamente.";
+          console.warn("comanda.persistir", {
+            operacaoId: registro.id,
+            acao,
+            etapa: incerto ? "confirmacao" : "gravacao",
+            codigo: incerto ? "RESULTADO_DESCONHECIDO" : codigoDoErro(erro) ?? "CONFLITO_LOCAL",
+          });
           setToasts((atual) => [
-            ...atual.slice(-2),
+            ...atual.filter((toast) => toast.text !== texto).slice(-2),
             {
-              id: Date.now(),
-              text: "Não foi possível confirmar a alteração. A última informação conhecida foi mantida.",
+              id: Date.now() + Math.random(),
+              text: texto,
               tone: "atencao",
             },
           ]);
           await carregarRemoto(true).catch(() => undefined);
+          if (!incerto) void drenarFila();
         })
         .finally(() => {
           escritasPendentes.current = Math.max(0, escritasPendentes.current - 1);
@@ -1143,7 +1245,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         !quantidadeValida ||
         !produtoValido
       ) {
-        return;
+        return false;
       }
 
       const agora = new Date().toISOString();
@@ -1194,6 +1296,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         };
         return { ...prev, itens: [...prev.itens, item] };
       }, "alterar_comanda");
+      return true;
     },
     [aplicar, cardapioAtual, funcionarioAtivo, novoId, organizacaoId],
   );
@@ -1201,8 +1304,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   const adicionarItem = useCallback(
     ({ mesa_id, ...novo }: NovoItem) => {
       const mesa = espelho.current.mesas.find((registro) => registro.mesa_id === mesa_id);
-      if (!mesa?.atendimento_id) return;
-      adicionarItemAtendimento({ ...novo, atendimento_id: mesa.atendimento_id });
+      if (!mesa?.atendimento_id) return false;
+      return adicionarItemAtendimento({ ...novo, atendimento_id: mesa.atendimento_id });
     },
     [adicionarItemAtendimento],
   );

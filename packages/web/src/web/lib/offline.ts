@@ -31,7 +31,7 @@ export type AcaoPersistencia =
   | "encerrar_sem_consumo"
   | "desfazer_sem_consumo";
 
-export type Conectividade = "sincronizado" | "pendente" | "offline";
+export type Conectividade = "sincronizado" | "pendente" | "offline" | "incerto";
 
 export interface FilaOfflineItem {
   id: string;
@@ -43,6 +43,7 @@ export interface FilaOfflineItem {
   tentativas: number;
   proximaTentativaEm: number;
   criadoEm: string;
+  resultadoIncerto?: boolean;
 }
 
 export interface FalhaOffline {
@@ -448,6 +449,7 @@ function normalizarFilaItem(valor: unknown, organizacaoId: string): FilaOfflineI
     tentativas: atual.tentativas,
     proximaTentativaEm: atual.proximaTentativaEm,
     criadoEm: atual.criadoEm,
+    ...(atual.resultadoIncerto === true ? { resultadoIncerto: true } : {}),
   };
 }
 
@@ -687,5 +689,5 @@ export function estadoConfirmadoParaResumo(
   confirmado: Dados,
   atual: Dados,
 ): Dados {
-  return conectividade === "offline" ? confirmado : atual;
+  return conectividade === "offline" || conectividade === "incerto" ? confirmado : atual;
 }
