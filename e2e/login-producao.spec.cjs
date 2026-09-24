@@ -29,7 +29,7 @@ test.use({
 
 test.beforeAll(async () => {
   await rm(banco, { force: true });
-  servidor = spawn("bun", ["packages/web/src/server.ts"], {
+  servidor = spawn(process.env.CAV_E2E_BUN_PATH ?? "bun", ["packages/web/src/server.ts"], {
     cwd: raiz,
     env: {
       ...process.env,
@@ -72,18 +72,18 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await encerrarServidor();
-  await rm(banco, { force: true });
-  await rm(`${banco}-shm`, { force: true });
-  await rm(`${banco}-wal`, { force: true });
+  for (const arquivo of [banco, `${banco}-shm`, `${banco}-wal`]) {
+    await rm(arquivo, { force: true, maxRetries: 10, retryDelay: 250, recursive: true });
+  }
 });
 
 async function encerrarServidor() {
   if (!servidor || servidor.exitCode !== null) return;
+  const saiu = once(servidor, "exit");
   servidor.kill();
-  await Promise.race([
-    once(servidor, "exit"),
-    new Promise((resolve) => setTimeout(resolve, 2_000)),
-  ]);
+  await Promise.race([saiu, new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Servidor nao encerrou em 10 segundos.")), 10_000),
+  )]);
 }
 
 test("login por PIN renderiza a tela principal sem erros e permite sair", async ({
@@ -415,6 +415,43 @@ test("resposta perdida no envio nao duplica ficha nem fila de impressao", async 
   await page.reload();
   await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
   expect(envios).toBe(1);
+  await page.getByTestId("solicitar-fechamento").click();
+  await expect(page.getByText(/Adicione pelo menos uma pessoa antes de pedir o fechamento/)).toBeVisible();
+  await page.getByTestId("nova-pessoa").fill("Pessoa teste");
+  const cadastro = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes('"alterar_comanda"'),
+  );
+  await page.getByTestId("adicionar-pessoa").first().click();
+  expect((await cadastro).status()).toBe(200);
+  const solicitacao = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes('"solicitar_fechamento"'),
+  );
+  await page.getByTestId("solicitar-fechamento").click();
+  expect((await solicitacao).status()).toBe(200);
+  await page.goto("/caixa");
+  const conta = page.locator('[data-testid^="conta-"]').filter({ hasText: "Mesa 04" });
+  await expect(conta).toBeVisible();
+  await conta.locator('[data-testid^="dividir-"]').click();
+  await expect(page.getByTestId("divisao-Pessoa teste")).toBeVisible();
+  const fechamento = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes('"fechar_conta"'),
+  );
+  await page.getByTestId("confirmar-fechamento").click();
+  expect((await fechamento).status()).toBe(200);
+  await expect(page.getByTestId("dialogo-fechamento")).toHaveCount(0);
+  const dbFechamento = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
+  try {
+    const registros = await dbFechamento.execute({
+      sql: "SELECT count(*) AS total FROM fechamentos WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 4],
+    });
+    expect(Number(registros.rows[0]?.total)).toBe(1);
+  } finally {
+    dbFechamento.close();
+  }
 });
 
 function instalarBluetoothSimulado(page, { gravavel = true } = {}) {
