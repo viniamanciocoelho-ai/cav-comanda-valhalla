@@ -344,10 +344,6 @@ export default function MesaPage() {
       );
       return;
     }
-    if (!pessoas.length) {
-      notificar("Adicione pelo menos uma pessoa antes de pedir o fechamento.", "atencao");
-      return;
-    }
     const ok = solicitarFechamento(mesa_id);
     notificar(
       ok
@@ -388,7 +384,7 @@ export default function MesaPage() {
   function criarPessoa() {
     const pessoa = adicionarPessoa(mesa_id, novaPessoa);
     if (!pessoa) {
-      notificar("Escreva o nome ou o apelido da pessoa.", "atencao");
+      notificar("Não foi possível adicionar a pessoa nesta mesa.", "atencao");
       return;
     }
     setNovaPessoa("");
@@ -564,8 +560,8 @@ export default function MesaPage() {
                     onKeyDown={(evento) => {
                       if (evento.key === "Enter") criarPessoa();
                     }}
-                    placeholder="Nome ou apelido"
-                    aria-label="Nome da pessoa que entrou na mesa"
+                    placeholder="Nome ou apelido (opcional)"
+                    aria-label="Nome ou apelido da pessoa (opcional)"
                     data-testid="nova-pessoa"
                     className="border-line bg-surface text-parchment placeholder:text-muted/70 focus:border-gold min-h-11 min-w-0 flex-1 rounded-md border px-3 text-[14px] outline-none"
                   />

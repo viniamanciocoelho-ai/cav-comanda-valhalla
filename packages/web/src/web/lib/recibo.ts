@@ -8,7 +8,7 @@ import type {
   Ticket,
 } from "./types";
 import { money, moneyCentavos, motivoSemConsumoLabel } from "./format";
-import { ehCompartilhado } from "./operacao";
+import { ehCompartilhado, participantesDoRateio } from "./operacao";
 import { ratear } from "./rateio";
 
 export function montarRecibo(
@@ -29,15 +29,17 @@ export function montarRecibo(
     localTexto,
     "-".repeat(largura === 58 ? 32 : 42),
   ];
-  for (const pessoa of pessoas) {
-    const total = divisao.find((linha) => linha.pessoa_id === pessoa.pessoa_id);
-    linhas.push("", pessoa.nome.toUpperCase());
-    for (const item of itens.filter((registro) => registro.pessoa_id === pessoa.pessoa_id)) {
+  for (const total of divisao) {
+    linhas.push("", total.pessoa.toUpperCase());
+    for (const item of itens.filter((registro) =>
+      registro.pessoa_id === total.pessoa_id ||
+      (!pessoas.length && ehCompartilhado(registro.pessoa_id))
+    )) {
       linhas.push(`${item.quantidade}x ${item.name}  ${money(item.price * item.quantidade)}`);
     }
-    if (total?.rateio) linhas.push(`Rateio compartilhados  ${money(total.rateio)}`);
-    if (total?.servico) linhas.push(`Servico  ${money(total.servico)}`);
-    linhas.push(`TOTAL  ${money(total?.total ?? 0)}`);
+    if (total.rateio && pessoas.length) linhas.push(`Rateio compartilhados  ${money(total.rateio)}`);
+    if (total.servico) linhas.push(`Servico  ${money(total.servico)}`);
+    linhas.push(`TOTAL  ${money(total.total)}`);
   }
   linhas.push("", "Resumo de consumo - sem valor fiscal");
   return linhas.join("\n");
@@ -137,8 +139,9 @@ export function divisaoDoFechamento(
   pessoas: Pessoa[],
   itens: OrderItem[],
 ): LinhaDivisao[] {
+  const participantes = participantesDoRateio(pessoas, fechamento.atendimento_id);
   const centavosDoItem = (item: OrderItem) => Math.round(item.price * 100) * item.quantidade;
-  const individuais = pessoas.map((pessoa) =>
+  const individuais = participantes.map((pessoa) =>
     itens
       .filter((item) => item.pessoa_id === pessoa.pessoa_id)
       .reduce((soma, item) => soma + centavosDoItem(item), 0),
@@ -146,10 +149,10 @@ export function divisaoDoFechamento(
   const compartilhado = itens
     .filter((item) => ehCompartilhado(item.pessoa_id))
     .reduce((soma, item) => soma + centavosDoItem(item), 0);
-  const rateios = ratear(compartilhado, pessoas.map(() => 1));
+  const rateios = ratear(compartilhado, participantes.map(() => 1));
   const bases = individuais.map((valor, indice) => valor + rateios[indice]);
   const servicos = ratear(Math.round(fechamento.servico * 100), bases);
-  return pessoas.map((pessoa, indice) => ({
+  return participantes.map((pessoa, indice) => ({
     pessoa_id: pessoa.pessoa_id,
     pessoa: pessoa.nome,
     individual: individuais[indice] / 100,

@@ -103,7 +103,7 @@ export function CheckoutSheet({
       return;
     }
     if (!conta.divisao.length) {
-      notificar("Cadastre pelo menos uma pessoa na comanda antes de fechar.", "atencao");
+      notificar("Não há consumo para dividir neste atendimento.", "atencao");
       return;
     }
     const registro = fecharAtendimento(atendimento_id, false);
@@ -249,7 +249,7 @@ export function CheckoutSheet({
 
       {!conta.divisao.length ? (
         <div className="border-line text-muted rounded-md border border-dashed p-6 text-center text-[13px]">
-          Este atendimento não tem pessoas cadastradas na comanda.
+          Este atendimento não tem consumo para dividir.
         </div>
       ) : null}
 

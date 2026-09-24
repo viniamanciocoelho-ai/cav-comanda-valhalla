@@ -25,6 +25,7 @@ import {
   TAXA_SERVICO,
   compartilhadoId,
   ehCompartilhado,
+  participantesDoRateio,
 } from "../../web/lib/operacao";
 import { ratear } from "../../web/lib/rateio";
 import type {
@@ -128,8 +129,9 @@ function validarFechamentoFinanceiro(
   const itens = anterior.itens.filter(
     (item) => item.atendimento_id === fechamento.atendimento_id,
   );
-  const pessoas = anterior.pessoas.filter(
-    (pessoa) => pessoa.atendimento_id === fechamento.atendimento_id,
+  const pessoas = participantesDoRateio(
+    anterior.pessoas.filter((pessoa) => pessoa.atendimento_id === fechamento.atendimento_id),
+    fechamento.atendimento_id,
   );
   const local =
     fechamento.mesa_id !== null
@@ -139,7 +141,6 @@ function validarFechamentoFinanceiro(
     !local?.ativa ||
     local.atendimento_id !== fechamento.atendimento_id ||
     !itens.length ||
-    !pessoas.length ||
     fechamento.servicoIncluso !== local.servicoIncluso ||
     itens.some(
       (item) => item.status === "novo" || item.status === "cancelamento_solicitado",
@@ -1645,11 +1646,6 @@ export function validarTransicao(
           (item) => item.atendimento_id === antes.atendimento_id,
         )
       : [];
-    const temPessoas = antes
-      ? anterior.pessoas.some(
-          (pessoa) => pessoa.atendimento_id === antes.atendimento_id,
-        )
-      : false;
     if (
       mesasAlteradas.length + balcoesAlterados.length !== 1 ||
       !antes?.ativa ||
@@ -1660,7 +1656,6 @@ export function validarTransicao(
       depois.status !== "aguardando" ||
       !depois.contaSolicitada ||
       !itensMesa.length ||
-      !temPessoas ||
       itensMesa.some(
         (item) =>
           item.status === "novo" ||

@@ -77,7 +77,7 @@ export function MenuSheet({
     if (mesa_id === undefined) return;
     const pessoa = adicionarPessoa(mesa_id, novaPessoa);
     if (!pessoa) {
-      notificar("Informe o nome da pessoa antes de adicionar.", "atencao");
+      notificar("Não foi possível adicionar a pessoa nesta mesa.", "atencao");
       return;
     }
     setNovaPessoa("");
@@ -193,7 +193,7 @@ export function MenuSheet({
                   criarPessoa();
                 }
               }}
-              placeholder="Adicionar pessoa na mesa"
+              placeholder="Nome ou apelido (opcional)"
               data-testid="campo-nova-pessoa"
               className="border-line bg-surface text-parchment placeholder:text-muted focus:border-gold/70 min-h-11 min-w-0 flex-1 rounded-md border px-3 text-[14px] outline-none"
             />

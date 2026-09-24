@@ -19,6 +19,7 @@ import {
   COMPARTILHADO,
   TAXA_SERVICO,
   ehCompartilhado,
+  participantesDoRateio,
 } from "../lib/operacao";
 import { paraCentavos, paraReais, ratear } from "../lib/rateio";
 import { horaAgora } from "../lib/format";
@@ -422,8 +423,9 @@ function calcularResumoAtendimento(
   const itens = dados.itens.filter(
     (registro) => registro.atendimento_id === atendimento_id,
   );
-  const pessoas = dados.pessoas.filter(
-    (registro) => registro.atendimento_id === atendimento_id,
+  const pessoas = participantesDoRateio(
+    dados.pessoas.filter((registro) => registro.atendimento_id === atendimento_id),
+    atendimento_id,
   );
   const servicoIncluso = mesa?.servicoIncluso ?? balcao?.servicoIncluso ?? true;
 
@@ -432,7 +434,7 @@ function calcularResumoAtendimento(
   const servicoCent = servicoIncluso ? Math.round(subtotalCent * TAXA_SERVICO) : 0;
 
   let divisao: LinhaDivisao[] = [];
-  if (pessoas.length) {
+  if (itens.length) {
     const individuaisCent = pessoas.map((p) =>
       itens.filter((i) => i.pessoa_id === p.pessoa_id).reduce((s, i) => s + centavosDoItem(i), 0),
     );
@@ -1177,8 +1179,6 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
 
   const adicionarPessoa = useCallback(
     (mesa_id: number, nome: string) => {
-      const limpo = nome.trim();
-      if (!limpo) return null;
       const mesa = espelho.current.mesas.find((m) => m.mesa_id === mesa_id);
       if (
         !mesa ||
@@ -1188,6 +1188,14 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       ) {
         return null;
       }
+      const existentes = new Set(
+        espelho.current.pessoas
+          .filter((pessoa) => pessoa.atendimento_id === mesa.atendimento_id)
+          .map((pessoa) => pessoa.nome),
+      );
+      let numero = 1;
+      while (existentes.has(`Cliente ${numero}`)) numero += 1;
+      const limpo = nome.trim() || `Cliente ${numero}`;
       const pessoa: Pessoa = {
         pessoa_id: `m${mesa_id}-${novoId("p")}`,
         nome: limpo,
@@ -1736,12 +1744,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const itens = atual.itens.filter(
         (item) => item.atendimento_id === atendimento_id,
       );
-      const temPessoas = atual.pessoas.some(
-        (pessoa) => pessoa.atendimento_id === atendimento_id,
-      );
       if (
         !itens.length ||
-        !temPessoas ||
         itens.some(
           (item) => item.status === "novo" || item.status === "cancelamento_solicitado",
         )
