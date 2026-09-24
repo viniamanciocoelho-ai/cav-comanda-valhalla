@@ -101,3 +101,47 @@
   O `AGENTS.md` proibe push nesta sessao; nao afirmar URL de branch publicada
   sem push confirmado. O bundle de transferencia esta em
   `.tmp/entrega-quintino/confirmacao-pedidos.bundle`.
+
+## Nova captura e verificacao da entrega (2026-09-24)
+
+- Uma captura do Chrome Android marcada 12:36 mostra avisos de confirmacao e
+  uma notificacao de item lancado, enquanto a lista exibida permanece vazia.
+  Ela nao mostra o SHA do deploy, os status HTTP, os IDs de operacao ou os
+  logs do servidor. Portanto nao permite afirmar que o hotfix publicado
+  `bbcc97f` estava ativo, nem atribuir essa ocorrencia a uma causa unica.
+- O hotfix `hotfix/confirmacao-pedidos` foi publicado separadamente no GitHub
+  no SHA `bbcc97fe058bda7de1b1faa72054d7b4979e83e7`. A branch completa
+  `fix/confirmacao-pedidos` continua somente local; inclui tambem o fechamento
+  sem nomes, que nao faz parte do hotfix. Nenhuma das branches foi validada
+  no banco do cliente por esta revisao.
+- Em checkout limpo com Bun 1.3.14, sem `.env` ou conexao remota herdada,
+  `bun install --frozen-lockfile` e `bun run verify:confirmacao-pedidos`
+  passaram novamente: typecheck 3/3, build 2/2, lint sem avisos, nove suites
+  de regressao e Playwright 13/13. Isto nao substitui a verificacao do SHA
+  implantado e dos logs da ocorrencia real.
+
+## Rastreio do fluxo publicado (2026-09-24)
+
+- O botao de adicionar item em `mesa.tsx` abre `MenuSheet`. Para mesas, o
+  componente chama `adicionarItemAtendimento` com o `atendimento_id` ativo;
+  o adaptador `adicionarItem` somente resolve a mesa para esse mesmo ID e
+  delega para a mesma funcao. Nao existe um segundo writer usado pelo botao.
+- A funcao atualiza o espelho local por `aplicar`, registra uma unica
+  `FilaOfflineItem` e converge para `confirmarRegistro`. Tanto o caminho online
+  serializado como a fila offline chamam `client.comanda.persistir`; a leitura
+  periodica e os listeners `online`/`offline` chamam somente `estado()` ou
+  `drenarFila`, respeitando escritas pendentes, versao e resultado incerto.
+- A API monta o mesmo procedimento em `routes/comanda.ts`, que chama
+  `salvarEstado` no `comanda-store.ts`. O build Vite inclui `menu-sheet`,
+  `mesa`, `comanda-provider`, `persistencia` e `offline` no bundle principal;
+  o runtime Docker usa o `dist` e copia apenas `src/api` e bibliotecas
+  necessarias ao servidor. Nao foram encontrados listeners, rotas ou imports
+  antigos que sobrescrevam a gravacao corrigida.
+- O teste Playwright de login agora baixa o script principal servido pelo
+  servidor e verifica que a mensagem nova de resultado incerto esta no bundle
+  e que o texto antigo da captura nao esta. Isso evita declarar que um build
+  novo esta correto apenas por testar o codigo-fonte.
+- O build forcado em checkout limpo usou `turbo run build --force`: frontend e
+  desktop executaram com `Cached: 0`. O teste Playwright contra esse `dist`
+  passou 13/13; o teste de concorrencia e resposta perdida passou. O hash do
+  asset principal dessa execucao foi registrado no guia operacional.

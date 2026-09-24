@@ -105,6 +105,15 @@ test("login por PIN renderiza a tela principal sem erros e permite sair", async 
 
   await page.goto("/");
   await expect(page.getByTestId("login-pin")).toBeVisible();
+  const bundlePrincipal = await page.evaluate(async () => {
+    const script = document.querySelector('script[type="module"][src]');
+    if (!script) throw new Error("Script principal ausente do HTML de producao.");
+    const resposta = await fetch(script.src);
+    if (!resposta.ok) throw new Error("Script principal nao foi servido.");
+    return resposta.text();
+  });
+  expect(bundlePrincipal).toContain("A alteração está aguardando confirmação.");
+  expect(bundlePrincipal).not.toContain("Não foi possível confirmar a alteração. A última informação conhecida foi mantida.");
   await page.getByTestId("campo-pin").fill("8462");
   await page.getByRole("button", { name: "Entrar" }).click();
 

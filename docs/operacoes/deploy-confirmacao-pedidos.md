@@ -87,6 +87,39 @@ acesso autorizado. Nao compartilhe payload, PIN, cookie, token, nome ou dados
 de clientes. A captura original nao tem logs HTTP suficientes para provar a
 causa especifica da ocorrencia em producao.
 
+Uma captura posterior de 2026-09-24, 12:36 no aparelho, tambem mostra o aviso
+e um toast de item lancado, mas nao identifica o commit em execucao. Antes de
+atribuir esse caso a uma regressao, confirme no Render o SHA efetivamente
+implantado e recarregue a pagina no Chrome Android para usar o bundle do mesmo
+deploy. Depois correlacione uma unica tentativa com status HTTP e
+`operacaoId`; um toast por si so nao comprova a gravacao. Se o resultado de
+uma escrita for incerto, consulte o estado autorizado antes de tentar outra
+vez, para evitar duplicacao. Nao desative o controle de concorrencia.
+
+## Conferencia do artefato publicado
+
+Esta entrega afeta o servico web como uma unidade: o mesmo commit gera o
+frontend Vite e o backend Hono/oRPC dentro da imagem Docker. Nao publique um
+frontend separado. No Render, confira o SHA do commit da imagem e compare com
+o HEAD da branch entregue. Depois abra `/api/health/ready`; resposta saudavel
+confirma que o backend iniciou, mas nao substitui a conferencia do SHA.
+
+Para conferir o frontend sem dados de cliente, abra o HTML inicial no Chrome e
+anote o nome do `script type="module"` em `/assets/`. O nome e o hash do asset
+gerado pelo Vite; o asset principal da validacao local forcada foi
+`index-BY2olVyR.js`, SHA-256
+`2EF1DB8D09606785D8FC8C1E4AF0C47FBDB507D467F1964DD9940AB25AE91646`.
+O nome/hash do Render deve ser conferido na resposta efetivamente servida,
+porque um navegador pode manter HTML antigo em cache. Recarregue a pagina no
+Chrome Android antes do teste e nao apague a fila offline.
+
+O fluxo efetivamente publicado deve seguir `mesa.tsx` -> `MenuSheet` ->
+`adicionarItemAtendimento` -> `aplicar` -> `confirmarRegistro` ->
+`client.comanda.persistir` -> `salvarEstado`. A fila offline e o polling nao
+usam uma implementacao antiga; ambos reaplicam a intencao com controle de
+versao. O teste Playwright baixa o script principal e rejeita o texto antigo
+da captura, alem de cobrir concorrencia, refresh e resposta perdida.
+
 Para reverter, selecione a imagem/commit anterior no Render **apos** apurar as
 operacoes incertas; o codigo anterior pode nao interpretar da mesma forma o
 estado local pendente no navegador. Como esta entrega nao traz migration, nao
