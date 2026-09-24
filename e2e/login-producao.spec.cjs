@@ -409,21 +409,17 @@ test("resposta perdida no envio nao duplica ficha nem fila de impressao", async 
     });
     expect(Number(fichas.rows[0]?.total)).toBe(1);
     expect(Number(impressoes.rows[0]?.total)).toBe(1);
+    const pessoasAntesDeFechar = await db.execute({
+      sql: "SELECT count(*) AS total FROM pessoas_da_comanda WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 4],
+    });
+    expect(Number(pessoasAntesDeFechar.rows[0]?.total)).toBe(0);
   } finally {
     db.close();
   }
   await page.reload();
   await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
   expect(envios).toBe(1);
-  await page.getByTestId("solicitar-fechamento").click();
-  await expect(page.getByText(/Adicione pelo menos uma pessoa antes de pedir o fechamento/)).toBeVisible();
-  await page.getByTestId("nova-pessoa").fill("Pessoa teste");
-  const cadastro = page.waitForResponse((resposta) =>
-    resposta.url().includes("/api/rpc/comanda/persistir") &&
-    resposta.request().postData()?.includes('"alterar_comanda"'),
-  );
-  await page.getByTestId("adicionar-pessoa").first().click();
-  expect((await cadastro).status()).toBe(200);
   const solicitacao = page.waitForResponse((resposta) =>
     resposta.url().includes("/api/rpc/comanda/persistir") &&
     resposta.request().postData()?.includes('"solicitar_fechamento"'),
@@ -434,7 +430,7 @@ test("resposta perdida no envio nao duplica ficha nem fila de impressao", async 
   const conta = page.locator('[data-testid^="conta-"]').filter({ hasText: "Mesa 04" });
   await expect(conta).toBeVisible();
   await conta.locator('[data-testid^="dividir-"]').click();
-  await expect(page.getByTestId("divisao-Pessoa teste")).toBeVisible();
+  await expect(page.getByTestId("divisao-Consumo sem identificação")).toBeVisible();
   const fechamento = page.waitForResponse((resposta) =>
     resposta.url().includes("/api/rpc/comanda/persistir") &&
     resposta.request().postData()?.includes('"fechar_conta"'),
@@ -445,14 +441,108 @@ test("resposta perdida no envio nao duplica ficha nem fila de impressao", async 
   const dbFechamento = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
   try {
     const registros = await dbFechamento.execute({
-      sql: "SELECT count(*) AS total FROM fechamentos WHERE organizacao_id = ? AND mesa_id = ?",
+      sql: "SELECT divisao_json, total_centavos FROM fechamentos WHERE organizacao_id = ? AND mesa_id = ?",
       args: ["valhalla", 4],
     });
-    expect(Number(registros.rows[0]?.total)).toBe(1);
+    expect(registros.rows).toHaveLength(1);
+    const divisao = JSON.parse(registros.rows[0].divisao_json);
+    expect(divisao).toHaveLength(1);
+    expect(divisao[0].pessoa).toBe("Consumo sem identificação");
+    expect(Math.round(divisao[0].valor * 100)).toBe(Number(registros.rows[0].total_centavos));
+    const pessoas = await dbFechamento.execute({
+      sql: "SELECT count(*) AS total FROM pessoas_da_comanda WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 4],
+    });
+    expect(Number(pessoas.rows[0]?.total)).toBe(0);
+    const notinha = await dbFechamento.execute({
+      sql: "SELECT texto FROM fila_impressoes WHERE organizacao_id = ? AND mesa_id = ? AND tipo = 'recibo'",
+      args: ["valhalla", 4],
+    });
+    expect(notinha.rows).toHaveLength(1);
+    expect(String(notinha.rows[0].texto)).toContain("CONSUMO SEM IDENTIFICAÇÃO");
+    expect(String(notinha.rows[0].texto)).toContain("1x ");
+    expect(String(notinha.rows[0].texto)).toContain("TOTAL");
   } finally {
     dbFechamento.close();
   }
 });
+
+for (const { numero, nomes, esperados } of [
+  { numero: 5, nomes: ["Ana", "Bruno"], esperados: ["Ana", "Bruno"] },
+  { numero: 6, nomes: ["Ana", ""], esperados: ["Ana", "Cliente 1"] },
+]) {
+  test(`rateio e fechamento da mesa ${numero} com nomes ${nomes[1] ? "completos" : "misturados"}`, async ({ page }) => {
+    await entrarComoGerencia(page);
+    await abrirMesaSemNome(page, numero);
+    for (const nome of nomes) {
+      await page.getByTestId("nova-pessoa").fill(nome);
+      const cadastro = page.waitForResponse((resposta) =>
+        resposta.url().includes("/api/rpc/comanda/persistir") &&
+        resposta.request().postData()?.includes('"alterar_comanda"'),
+      );
+      await page.getByTestId("adicionar-pessoa").first().click();
+      expect((await cadastro).status()).toBe(200);
+    }
+    await page.getByTestId("adicionar-item").click();
+    await page.getByTestId("destinatario-Compartilhado").click();
+    const primeiro = page.waitForResponse((resposta) =>
+      resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"alterar_comanda"'),
+    );
+    await page.locator('[data-testid^="add-"]').first().click();
+    expect((await primeiro).status()).toBe(200);
+    await page.getByTestId("destinatario-Ana").click();
+    const individual = page.waitForResponse((resposta) =>
+      resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"alterar_comanda"'),
+    );
+    await page.locator('[data-testid^="add-"]').nth(1).click();
+    expect((await individual).status()).toBe(200);
+    await page.getByTestId("concluir-cardapio").click();
+    const envio = page.waitForResponse((resposta) =>
+      resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"enviar_pedido"'),
+    );
+    await page.getByTestId("enviar-pedido").click();
+    expect((await envio).status()).toBe(200);
+    const solicitacao = page.waitForResponse((resposta) =>
+      resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"solicitar_fechamento"'),
+    );
+    await page.getByTestId("solicitar-fechamento").click();
+    expect((await solicitacao).status()).toBe(200);
+    await page.goto("/caixa");
+    const conta = page.locator('[data-testid^="conta-"]').filter({ hasText: `Mesa ${String(numero).padStart(2, "0")}` });
+    await conta.locator('[data-testid^="dividir-"]').click();
+    for (const nome of esperados) await expect(page.getByTestId(`divisao-${nome}`)).toBeVisible();
+    const fechamento = page.waitForResponse((resposta) =>
+      resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"fechar_conta"'),
+    );
+    await page.getByTestId("confirmar-fechamento").click();
+    expect((await fechamento).status()).toBe(200);
+    const db = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
+    try {
+      const resultado = await db.execute({
+        sql: "SELECT divisao_json, total_centavos FROM fechamentos WHERE organizacao_id = ? AND mesa_id = ?",
+        args: ["valhalla", numero],
+      });
+      expect(resultado.rows).toHaveLength(1);
+      const divisao = JSON.parse(resultado.rows[0].divisao_json);
+      expect(divisao.map((linha) => linha.pessoa)).toEqual(esperados);
+      expect(divisao.every((linha) => linha.valor > 0)).toBe(true);
+      expect(divisao.reduce((soma, linha) => soma + Math.round(linha.valor * 100), 0)).toBe(Number(resultado.rows[0].total_centavos));
+      const notinha = await db.execute({
+        sql: "SELECT texto FROM fila_impressoes WHERE organizacao_id = ? AND mesa_id = ? AND tipo = 'recibo'",
+        args: ["valhalla", numero],
+      });
+      expect(notinha.rows).toHaveLength(1);
+      for (const nome of esperados) expect(String(notinha.rows[0].texto)).toContain(nome.toUpperCase());
+    } finally {
+      db.close();
+    }
+  });
+}
 
 function instalarBluetoothSimulado(page, { gravavel = true } = {}) {
   return page.addInitScript(
