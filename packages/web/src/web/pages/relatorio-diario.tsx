@@ -91,6 +91,7 @@ export default function RelatorioDiarioPage() {
                 <CalendarDays className="text-gold size-4" aria-hidden="true" />
                 <input
                   type="date"
+                  aria-label="Data do fechamento"
                   value={data}
                   onChange={(evento) => {
                     setCarregando(true);
