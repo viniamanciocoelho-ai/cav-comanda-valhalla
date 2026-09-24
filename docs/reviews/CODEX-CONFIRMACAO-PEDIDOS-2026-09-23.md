@@ -48,4 +48,27 @@
 3. Se ocorrer novamente no Chrome Android: anotar data, horario/fuso, acao e `operacaoId` do aviso no console; coletar apenas status, duracao e codigo da chamada `/api/rpc/comanda/persistir` e logs `comanda.persistir` com o mesmo ID. Consultar quantidade/estado do item no tenant correto com acesso autorizado. Nao enviar PIN, token, cookie, payload completo ou dados de clientes.
 4. Reversao: retornar ao deploy/imagem anterior no Render apos verificar as operacoes pendentes; nao restaurar banco nem limpar dados. Como nao houve migration nova, nao ha rollback de schema. Nao usar force push.
 
-**Recomendacao:** pronto para revisao do Quintino em ambiente controlado; aprovacao de producao bloqueada ate a verificacao do lint global, do Bun fixado e da evidencia da ocorrencia real.
+**Recomendacao original (2026-09-23):** pronto para revisao do Quintino em ambiente controlado; os bloqueios de lint e versao local seriam resolvidos na etapa seguinte. A evidencia da ocorrencia real e a validacao de producao continuavam pendentes.
+
+## Complemento da entrega local (2026-09-24)
+
+- O erro global de oxlint `jsx-a11y/control-has-associated-label` na linha do
+  campo de data de `relatorio-diario.tsx` ja existia em `692a089`. Um
+  `aria-label` foi adicionado em commit isolado, sem mudar a interface. O
+  `runkit lint` do Windows falha ao iniciar subprocessos (`EFTYPE`); o gate
+  usa `konsistent` e `oxlint` 1.69.0 fixados pelo lockfile, com as regras
+  integrais do projeto. Ambos passaram. Fora do Windows, roda `runkit lint`.
+- `e2e/login-producao.spec.cjs` agora cobre, apos o envio com resposta
+  perdida, a recusa de fechamento sem pessoa, o cadastro posterior e o
+  fechamento persistido, sem mudar a regra de negocio. Teardown do servidor
+  espera o processo sair antes de remover o SQLite no Windows.
+- Validacao em clone limpo com Bun 1.3.14: `bun install --frozen-lockfile`,
+  `bun run verify:confirmacao-pedidos` passaram (typecheck 3/3, build 2/2,
+  lint, sete suites de API/unidade e Playwright 11/11). O checkout principal
+  tem `.env` local, nao lido nem copiado; o gate o recusa intencionalmente.
+- Continua pendente a comprovacao da ocorrencia especifica no Render, a
+  politica de autodeploy, a revisao das migrations preexistentes do entrypoint
+  e a validacao fisica no Chrome Android/Turso. Nao houve acesso a producao,
+  push, limpeza operacional ou aprovacao de deploy.
+- Guia de verificacao, importacao e reversao:
+  `docs/operacoes/deploy-confirmacao-pedidos.md`.
