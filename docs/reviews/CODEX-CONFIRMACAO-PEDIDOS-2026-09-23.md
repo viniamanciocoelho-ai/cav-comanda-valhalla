@@ -72,3 +72,32 @@
   push, limpeza operacional ou aprovacao de deploy.
 - Guia de verificacao, importacao e reversao:
   `docs/operacoes/deploy-confirmacao-pedidos.md`.
+
+## Complemento: fechamento sem nome (2026-09-24)
+
+- A restricao de pessoa cadastrada descrita acima era verdadeira na revisao
+  anterior e foi removida agora a pedido do usuario. Antes da correcao, a
+  regressao de producao aguardou sem sucesso a chamada de
+  `solicitar_fechamento` em mesa com itens enviados e zero pessoas.
+- Front e API agora permitem solicitar e concluir a conta sem pessoas. Nesse
+  caso, o resumo e a validacao financeira usam uma unica linha virtual
+  `Consumo sem identificação`, sem criar pessoa no banco; a fila de recibo
+  inclui os itens compartilhados e o total. Se a operacao exigir rateio entre
+  varias pessoas, o atendente pode incluir nomes ou deixar o campo vazio:
+  participantes anonimos recebem `Cliente 1`, `Cliente 2` etc. O backend
+  continua comparando os centavos e nomes da divisao ao fechar.
+- Playwright com bundle de producao e SQLite isolado: mesa sem nomes, mesa com
+  todos os nomes e mesa mista passaram, com solicitação, fechamento, divisao
+  persistida e recibo. A abertura, a persistencia depois de reload, a leitura
+  em outra sessao e a recuperacao de resposta perdida continuam cobertas.
+  Teste de recibo exercita 3 centavos divididos entre dois participantes,
+  preservando a soma exata e o centavo excedente.
+- Em clone limpo com Bun 1.3.14, `bun run verify:confirmacao-pedidos`
+  passou: typecheck 3/3, build 2/2, lint com zero erros, nove suites de
+  regressao e Playwright 13/13. Nenhuma migration, schema, limpeza de salao ou
+  conexao ao banco do cliente foi executada. Resta a validacao fisica no
+  Chrome Android/Turso e a revisao da politica de deploy pelo Quintino.
+- Este complemento permanece na branch local `fix/confirmacao-pedidos`.
+  O `AGENTS.md` proibe push nesta sessao; nao afirmar URL de branch publicada
+  sem push confirmado. O bundle de transferencia esta em
+  `.tmp/entrega-quintino/confirmacao-pedidos.bundle`.

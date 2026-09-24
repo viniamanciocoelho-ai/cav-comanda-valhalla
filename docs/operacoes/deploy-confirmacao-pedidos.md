@@ -30,11 +30,13 @@ mesmas ferramentas fixadas do `runkit` diretamente porque o invólucro
 `bun run lint` falha com `EFTYPE`; nao silencia regras. Nao executa
 `deploy:setup`, migrations, limpeza ou deploy.
 
-Uma comanda pode ser aberta e receber itens compartilhados sem nome. A regra
-existente continua: com consumo, e necessario cadastrar ao menos uma pessoa
-antes de solicitar/confirmar fechamento. O teste cobre envio, resposta perdida,
-recusa sem pessoa, cadastro posterior e fechamento persistido. Nao foi
-introduzida migration estrutural nem variavel nova.
+Uma comanda pode ser aberta, receber itens compartilhados e ser fechada sem
+nome. Sem cadastro de pessoa, a divisao tem uma linha "Consumo sem identificação"
+com o total integral. Para ratear entre varias pessoas, inclua participantes;
+o campo de nome pode ficar vazio, gerando "Cliente 1", "Cliente 2" etc. O
+teste cobre envio, resposta perdida, fechamento sem pessoa, pessoas com nome
+e mistura de nomeados e anonimos. Nao foi introduzida migration estrutural
+nem variavel nova.
 
 ## Publicacao controlada
 
@@ -71,8 +73,10 @@ nao execute `limpar:operacao` nem `packages/web/scripts/limpar-operacao.ts`.
 No Chrome Android, em tenant autorizado e dados de teste controlados: entre
 com PIN; abra mesa sem nome; adicione item compartilhado; confira
 `Sincronizado`, recarregue e leia em outra sessao; envie a producao e confirme
-uma unica ficha/fila; tente pedir fechamento sem pessoa (deve recusar); cadastre
-uma pessoa, solicite a conta e conclua no caixa em ambiente de validacao.
+uma unica ficha/fila; solicite a conta sem pessoa e confira no caixa a divisao
+"Consumo sem identificação" e o recibo com itens e total. Em outro atendimento
+de teste, inclua participantes nomeados e anonimos e confira o rateio e o
+fechamento em ambiente de validacao.
 Nao crie consumo ou pagamento ficticio no banco do cliente. Verifique tambem
 o comportamento de erro de rede sem tocar novamente na operacao incerta.
 
