@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -47,7 +47,8 @@ function executar(nome: string, comando: string[]) {
 }
 
 function binarioFixado(pacote: string) {
-  const requireRunkit = createRequire(path.join(raiz, "node_modules", "@runablehq", "runkit", "dist", "bin", "runkit.js"));
+  const runkit = realpathSync(path.join(raiz, "node_modules", "@runablehq", "runkit"));
+  const requireRunkit = createRequire(path.join(runkit, "dist", "bin", "runkit.js"));
   const arquivo = requireRunkit.resolve(`${pacote}/package.json`);
   const manifesto = JSON.parse(readFileSync(arquivo, "utf8")) as { bin: string | Record<string, string> };
   const relativo = typeof manifesto.bin === "string" ? manifesto.bin : manifesto.bin[pacote];
