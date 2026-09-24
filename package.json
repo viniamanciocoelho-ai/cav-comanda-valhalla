@@ -12,6 +12,7 @@
     "build": "turbo build",
     "build:web": "cd packages/web && bunx vite build",
     "test:e2e:production": "bun run build:web && playwright test e2e/login-producao.spec.cjs --workers=1",
+    "verify:confirmacao-pedidos": "bun e2e/verificar-confirmacao-pedidos.ts",
     "start": "pm2 startOrRestart ecosystem.config.cjs --update-env",
     "stop": "pm2 delete web-app 2>/dev/null || true",
     "kill:port": "bun run internal:kill-port",
