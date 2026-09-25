@@ -71,7 +71,7 @@ if (process.platform === "win32") {
   executar("runkit lint", [bun, "run", "lint"]);
 }
 for (const teste of [
-  "confirmacao-pedidos", "offline", "mesas-compartilhadas", "tenant-isolation",
+  "bootstrap-seguro", "confirmacao-pedidos", "offline", "mesas-compartilhadas", "tenant-isolation",
   "security-regressao", "fase1-api", "sem-consumo", "recibo", "monetario",
 ]) {
   executar(`e2e/${teste}.ts`, [bun, `e2e/${teste}.ts`]);

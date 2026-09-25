@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { configuracaoBootstrap } from "../packages/web/src/api/lib/comanda-store";
+
+process.env.DATABASE_URL = "file::memory:";
+delete process.env.DATABASE_AUTH_TOKEN;
+const { configuracaoBootstrap } = await import("../packages/web/src/api/lib/comanda-store");
 
 const anterior = process.env.CAV_BOOTSTRAP_PIN_GERENCIA;
 const organizacaoAnterior = process.env.CAV_ORGANIZACAO_CODIGO;
