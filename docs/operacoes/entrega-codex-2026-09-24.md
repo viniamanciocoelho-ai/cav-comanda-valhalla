@@ -5,8 +5,8 @@
 - Branch: `feat/persistencia-notinha-pin-cardapio`
 - Base validada: `ef718342411a65224f08023b7e17edef944f9516`
 - Teste isolado: `359192f600153ad88a22bc4f9caf1117705d1884`
-- Commit documental e de teste: conferir `git rev-parse HEAD` apos receber
-  esta entrega local; nao substituir pelo SHA da base ao selecionar o deploy.
+- Commit das correcoes publicadas: `ec30483cade23f1d20bf4a940db1aa7a97ce5118`.
+- Branch no GitHub: `https://github.com/viniamanciocoelho-ai/cav-comanda-valhalla/tree/feat/persistencia-notinha-pin-cardapio`.
 - Servico afetado: imagem Docker raiz contendo frontend Vite e backend
   Hono/oRPC em `packages/web`.
 - Main: nao alterada.
@@ -19,6 +19,12 @@ colecoes, respostas perdidas, itens compartilhados sem nome, fechamento com
 nomes opcionais, RBAC, tenant, fila de impressao e o bundle final. O resultado
 completo esta em `docs/reviews/CODEX-REVISAO-AMPLIADA-2026-09-24.md`.
 
+O commit `ec30483` corrige tambem a reabertura de mesas que mantem pessoas,
+itens e fichas historicas de atendimentos encerrados. O backend preserva esses
+registros sem aceitar novos vinculos invalidos; o frontend exibe apenas o
+atendimento ativo, usa o funcionario atual ao abrir a mesa e sinaliza uma
+gravacao recusada em vez de exibir sucesso ou sincronizacao falsa.
+
 ## Validacao local
 
 No checkout limpo, sem `.env` real e com banco SQLite temporario:
@@ -26,7 +32,7 @@ No checkout limpo, sem `.env` real e com banco SQLite temporario:
 ```sh
 bun install --frozen-lockfile
 bun run verify:confirmacao-pedidos
-bun x turbo build --force
+bun x turbo run typecheck build --force
 git diff --check
 ```
 
@@ -37,6 +43,8 @@ de versao diferente; nao desative essa verificacao.
 No Windows, o gate usa os executaveis fixados de Konsistent e Oxlint porque o
 wrapper `bun run lint` pode falhar com `EFTYPE/uv_spawn`. Isso nao substitui o
 lint: o Oxlint fixado passou com 0 warnings e 0 errors.
+O gate executou 14 testes Playwright contra o bundle de producao, incluindo
+mesa reutilizada com historico, gravacao de item apos reload e recusa HTTP 400.
 
 ## Ordem controlada de publicacao
 
@@ -73,26 +81,13 @@ confirmar que nao ha migration nova incompativel.
 Nao usar force push, nao fazer merge na main e nao executar limpeza operacional
 como parte desta publicacao.
 
-## Transferencia privada sem push deste checkout
+## Branch publicada
 
-O arquivo ignorado por Git em
-`.tmp/entrega-quintino/revisao-ampliada-2026-09-25.bundle` transporta somente
-os commits locais posteriores a `ef71834`. Ele nao contem o `.env`, bancos
-locais nem `node_modules`. Quintino precisa ter a base `ef71834` no repositorio
-de destino. O bundle nao publica a branch por si so.
-
-```sh
-git cat-file -t ef71834
-git bundle verify /CAMINHO/PRIVADO/revisao-ampliada-2026-09-25.bundle
-git fetch /CAMINHO/PRIVADO/revisao-ampliada-2026-09-25.bundle refs/heads/feat/persistencia-notinha-pin-cardapio:refs/remotes/transfer/feat/persistencia-notinha-pin-cardapio
-git log --oneline ef71834..refs/remotes/transfer/feat/persistencia-notinha-pin-cardapio
-```
-
-Conferir o SHA da ponta transferida com o SHA final informado na entrega.
-Somente apos revisar os dois commits, as verificacoes e a politica de
-autodeploy, o responsavel pela publicacao decide como atualizar a branch
-homonima no GitHub sem force push. Nao publique em horario de operacao do
-cliente nem selecione a main para este trabalho.
+O push normal atualizou somente `feat/persistencia-notinha-pin-cardapio` no
+GitHub. Confirme o commit de ponta da branch antes de selecionar a revisao no
+Render; nao use o SHA `ef71834`, que e apenas a base antiga. Nao houve merge
+na `main`, deploy ou operacao no banco de producao nesta entrega. Confira a
+politica de autodeploy antes de publicar em horario de operacao do cliente.
 
 ## Verificacao pos-publicacao
 
@@ -103,4 +98,8 @@ cliente nem selecione a main para este trabalho.
 - Pedido nao duplica apos duplo clique ou resposta perdida.
 - Fechamento sem nome, completo e misto fecha centavos.
 - Perfil sem permissao recebe bloqueio do servidor.
+- Mesa livre com historico antigo abre normalmente; item novo persiste apos
+  recarga, ficha antiga nao aparece na producao e historico nao e apagado.
+- Uma recusa de gravacao mostra "Gravacao recusada" e reverte a alteracao local;
+  a fila offline com resultado incerto nao deve ser limpa no Chrome.
 - Nenhum teste destrutivo e feito no banco real.
