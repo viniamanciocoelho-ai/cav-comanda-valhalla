@@ -45,6 +45,7 @@ function mesa(extra: Partial<Mesa> = {}): Mesa {
   return {
     organizacao_id: ORG,
     mesa_id: 7,
+    atendimento_id: "at-mesa-7",
     status: "ocupada",
     ativa: true,
     pessoasFixas: 0,
@@ -62,7 +63,9 @@ function item(extra: Partial<OrderItem> = {}): OrderItem {
     organizacao_id: ORG,
     item_id: "it-1",
     pedido_id: null,
+    atendimento_id: "at-mesa-7",
     mesa_id: 7,
+    balcao_id: null,
     pessoa_id: "p-1",
     produto_id: "pr-1",
     name: "Chope",
@@ -80,18 +83,21 @@ function item(extra: Partial<OrderItem> = {}): OrderItem {
 }
 
 function pessoa(pessoa_id: string): Pessoa {
-  return { organizacao_id: ORG, pessoa_id, nome: pessoa_id, mesa_id: 7 } as Pessoa;
+  return {
+    pessoa_id, nome: pessoa_id, atendimento_id: "at-mesa-7", mesa_id: 7, balcao_id: null,
+  };
 }
 
 function dados(extra: Partial<Dados> = {}): Dados {
   return {
     mesas: [mesa()],
+    balcoes: [],
     pessoas: [],
     itens: [],
     tickets: [],
     fechamentos: [],
-    eventos: [],
     encerramentos: [],
+    anteriores: {},
     ...extra,
   } as Dados;
 }
@@ -179,11 +185,21 @@ console.log("\n5. Bloqueios de elegibilidade");
   checar("item entregue bloqueia", entregue.elegivel === false);
 
   const ficha = avaliarSemConsumoDe(
-    dados({ tickets: [{ mesa_id: 7 } as Ticket] }),
+    dados({ tickets: [{ mesa_id: 7, atendimento_id: "at-mesa-7" } as Ticket] }),
     7,
     quem("garcom"),
   );
   checar("ficha de producao bloqueia", ficha.elegivel === false);
+
+  const historico = avaliarSemConsumoDe(
+    dados({
+      itens: [item({ item_id: "it-antigo", atendimento_id: "at-antigo", status: "enviado" })],
+      tickets: [{ mesa_id: 7, atendimento_id: "at-antigo" } as Ticket],
+    }),
+    7,
+    quem("gerencia"),
+  );
+  checar("historico de outra abertura nao bloqueia a mesa atual", historico.elegivel === true);
 
   const fechando = avaliarSemConsumoDe(
     dados({ mesas: [mesa({ contaSolicitada: true })] }),

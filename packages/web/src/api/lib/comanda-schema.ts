@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { compartilhadoId } from "../../web/lib/operacao";
 
@@ -214,24 +215,6 @@ export const estadoPersistidoSchema = z
       "encerramentos",
     );
 
-    const mesas = new Map(estado.mesas.map((mesa) => [mesa.mesa_id, mesa]));
-    const balcoes = new Map(estado.balcoes.map((balcao) => [balcao.balcao_id, balcao]));
-    const pessoas = new Map(
-      estado.pessoas.map((pessoa) => [pessoa.pessoa_id, pessoa]),
-    );
-    const itens = new Map(estado.itens.map((item) => [item.item_id, item]));
-    const localValido = (registro: {
-      atendimento_id: string;
-      mesa_id: number | null;
-      balcao_id: number | null;
-    }) => {
-      if ((registro.mesa_id === null) === (registro.balcao_id === null)) return false;
-      const local =
-        registro.mesa_id !== null
-          ? mesas.get(registro.mesa_id)
-          : balcoes.get(registro.balcao_id as number);
-      return local?.ativa && local.atendimento_id === registro.atendimento_id;
-    };
     const vinculoEstruturalValido = (registro: {
       atendimento_id: string;
       mesa_id: number | null;
@@ -252,49 +235,6 @@ export const estadoPersistidoSchema = z
         contexto.addIssue({ code: "custom", message: "Encerramento sem consumo possui local inválido." });
       }
     }
-    if (estado.pessoas.some((pessoa) => !localValido(pessoa))) {
-      contexto.addIssue({ code: "custom", message: "Pessoa referencia atendimento inexistente." });
-    }
-    if (
-      estado.itens.some((item) => {
-        const pessoa = pessoas.get(item.pessoa_id);
-        return (
-          !localValido(item) ||
-          (item.pessoa_id !== compartilhadoId(item.atendimento_id) &&
-            (!pessoa ||
-              pessoa.atendimento_id !== item.atendimento_id ||
-              pessoa.mesa_id !== item.mesa_id ||
-              pessoa.balcao_id !== item.balcao_id))
-        );
-      })
-    ) {
-      contexto.addIssue({ code: "custom", message: "Item possui vínculo inválido." });
-    }
-    for (const ticket of estado.tickets) {
-      const ids = new Set(ticket.itemIds);
-      const idsLinhas = new Set(ticket.linhas.map((linha) => linha.item_id));
-      const vinculosValidos = ticket.itemIds.every((itemId) => {
-        const item = itens.get(itemId);
-        return (
-          item &&
-          item.atendimento_id === ticket.atendimento_id &&
-          item.mesa_id === ticket.mesa_id &&
-          item.balcao_id === ticket.balcao_id &&
-          item.pedido_id === ticket.pedido_id &&
-          item.destino_producao === ticket.destino_producao
-        );
-      });
-      if (
-        !localValido(ticket) ||
-        ids.size !== ticket.itemIds.length ||
-        idsLinhas.size !== ticket.linhas.length ||
-        ticket.itemIds.length !== ticket.linhas.length ||
-        [...ids].some((itemId) => !idsLinhas.has(itemId)) ||
-        !vinculosValidos
-      ) {
-        contexto.addIssue({ code: "custom", message: "Ficha de produção inválida." });
-      }
-    }
     const pendentes = new Set(
       estado.itens
         .filter((item) => item.status === "cancelamento_solicitado")
@@ -311,3 +251,73 @@ export const estadoPersistidoSchema = z
       });
     }
   });
+
+type EstadoVinculos = Pick<
+  z.infer<typeof estadoPersistidoSchema>,
+  "mesas" | "balcoes" | "pessoas" | "itens" | "tickets"
+>;
+
+export function validarVinculosAlterados(anterior: EstadoVinculos, estado: EstadoVinculos): boolean {
+  const mesas = new Map(estado.mesas.map((mesa) => [mesa.mesa_id, mesa]));
+  const balcoes = new Map(estado.balcoes.map((balcao) => [balcao.balcao_id, balcao]));
+  const pessoas = new Map(estado.pessoas.map((pessoa) => [pessoa.pessoa_id, pessoa]));
+  const itens = new Map(estado.itens.map((item) => [item.item_id, item]));
+  const pessoasAnteriores = new Map(anterior.pessoas.map((pessoa) => [pessoa.pessoa_id, pessoa]));
+  const itensAnteriores = new Map(anterior.itens.map((item) => [item.item_id, item]));
+  const ticketsAnteriores = new Map(anterior.tickets.map((ticket) => [ticket.ticket_id, ticket]));
+  const inalterado = <T>(atual: T, existente: T | undefined) =>
+    existente !== undefined && isDeepStrictEqual(atual, existente);
+  const localValido = (registro: {
+    atendimento_id: string;
+    mesa_id: number | null;
+    balcao_id: number | null;
+  }) => {
+    if ((registro.mesa_id === null) === (registro.balcao_id === null)) return false;
+    const local = registro.mesa_id !== null
+      ? mesas.get(registro.mesa_id)
+      : balcoes.get(registro.balcao_id as number);
+    return Boolean(local?.ativa && local.atendimento_id === registro.atendimento_id);
+  };
+
+  // Linhas historicas preexistentes podem referir um atendimento ja encerrado.
+  for (const pessoa of estado.pessoas) {
+    if (!inalterado(pessoa, pessoasAnteriores.get(pessoa.pessoa_id)) && !localValido(pessoa)) {
+      return false;
+    }
+  }
+  for (const item of estado.itens) {
+    if (inalterado(item, itensAnteriores.get(item.item_id))) continue;
+    const pessoa = pessoas.get(item.pessoa_id);
+    if (
+      !localValido(item) ||
+      (item.pessoa_id !== compartilhadoId(item.atendimento_id) &&
+        (!pessoa ||
+          pessoa.atendimento_id !== item.atendimento_id ||
+          pessoa.mesa_id !== item.mesa_id ||
+          pessoa.balcao_id !== item.balcao_id))
+    ) return false;
+  }
+  for (const ticket of estado.tickets) {
+    if (inalterado(ticket, ticketsAnteriores.get(ticket.ticket_id))) continue;
+    const ids = new Set(ticket.itemIds);
+    const idsLinhas = new Set(ticket.linhas.map((linha) => linha.item_id));
+    const vinculosValidos = ticket.itemIds.every((itemId) => {
+      const item = itens.get(itemId);
+      return item &&
+        item.atendimento_id === ticket.atendimento_id &&
+        item.mesa_id === ticket.mesa_id &&
+        item.balcao_id === ticket.balcao_id &&
+        item.pedido_id === ticket.pedido_id &&
+        item.destino_producao === ticket.destino_producao;
+    });
+    if (
+      !localValido(ticket) ||
+      ids.size !== ticket.itemIds.length ||
+      idsLinhas.size !== ticket.linhas.length ||
+      ticket.itemIds.length !== ticket.linhas.length ||
+      [...ids].some((itemId) => !idsLinhas.has(itemId)) ||
+      !vinculosValidos
+    ) return false;
+  }
+  return true;
+}

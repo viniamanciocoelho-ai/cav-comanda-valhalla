@@ -58,25 +58,23 @@ export default function GarcomPage() {
     notificar,
   } = useComanda();
 
-  // A gerencia enxerga o salao inteiro; o garcom, apenas as mesas do turno dele e as livres.
+  // A gerencia e o garcom consultam as mesas da mesma organizacao.
   const doTurno = mesasDoGarcom(funcionarioAtivo.funcionario_id);
   const base = perfilAtivo === "gerencia" ? mesas : doTurno;
   const minhas = base.filter((mesa) => mesa.ativa);
   const livres = base.filter((mesa) => mesa.status === "livre");
 
-  const meusIds = minhas.map((mesa) => mesa.mesa_id);
   const prontos = itens.filter(
     (item) =>
       item.status === "pronto" &&
-      item.mesa_id !== null &&
-      meusIds.includes(item.mesa_id),
+      minhas.some((mesa) => mesa.atendimento_id === item.atendimento_id),
   );
   const naoEnviados = minhas.reduce((soma, mesa) => soma + resumo(mesa.mesa_id).novos, 0);
   const pedindoConta = minhas.filter((mesa) => mesa.contaSolicitada).length;
 
   function abrir(mesa_id: number) {
     abrirMesa(mesa_id);
-    notificar(`Mesa ${mesaLabel(mesa_id)} aberta. Adicione as pessoas da mesa.`, "sucesso");
+    notificar(`Abertura da Mesa ${mesaLabel(mesa_id)} aguardando confirmação.`, "info");
     navegar(`/mesa/${mesa_id}`);
   }
 

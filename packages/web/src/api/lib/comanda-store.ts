@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "../database";
 import {
@@ -28,6 +29,7 @@ import {
   participantesDoRateio,
 } from "../../web/lib/operacao";
 import { ratear } from "../../web/lib/rateio";
+import { validarVinculosAlterados } from "./comanda-schema";
 import type {
   ConfiguracaoImpressora,
   Balcao,
@@ -877,7 +879,7 @@ export function validarTransicao(
     if (antes.length !== depois.length) return false;
     const mapa = new Map(depois.map((registro) => [registro[id], registro]));
     return mapa.size === antes.length && antes.every((registro) =>
-      serializar(registro) === serializar(mapa.get(registro[id])));
+      isDeepStrictEqual(registro, mapa.get(registro[id])));
   };
   const colecoesPermitidas: Record<string, (keyof EstadoPersistido)[]> = {
     abrir_mesa: ["mesas"],
@@ -929,28 +931,31 @@ export function validarTransicao(
     for (const [id, registroAntes] of mapaAntes) {
       const registroDepois = mapaDepois.get(id);
       if (!registroDepois) throw new Error(`Registro ${id} desapareceu durante ${acao}.`);
-      if (serializar(registroAntes) === serializar(registroDepois)) continue;
+      if (isDeepStrictEqual(registroAntes, registroDepois)) continue;
       alterados.push(id);
       const semPermitidos = (registro: T) =>
         Object.fromEntries(
           Object.entries(registro).filter(([campo]) => !permitidosCampos.has(campo)),
         );
-      if (serializar(semPermitidos(registroAntes)) !== serializar(semPermitidos(registroDepois))) {
+      if (!isDeepStrictEqual(semPermitidos(registroAntes), semPermitidos(registroDepois))) {
         throw new Error(`A ação ${acao} alterou campos não permitidos.`);
       }
     }
     return alterados;
   };
-  const validarForaDaMesa = <T extends { mesa_id: number | null }>(
+  const validarForaDoAtendimento = <T extends { atendimento_id: string }>(
     antes: T[],
     depois: T[],
-    mesaId: number,
+    atendimentoId: string,
+    id: keyof T,
   ) => {
-    if (
-      serializar(antes.filter((registro) => registro.mesa_id !== mesaId)) !==
-      serializar(depois.filter((registro) => registro.mesa_id !== mesaId))
-    ) {
-      throw new Error(`A ação ${acao} alterou registros de outra mesa.`);
+    const preservados = antes.filter((registro) => registro.atendimento_id !== atendimentoId);
+    const outros = depois.filter((registro) => registro.atendimento_id !== atendimentoId);
+    const mapa = new Map(outros.map((registro) => [registro[id], registro]));
+    if (preservados.length !== outros.length ||
+      mapa.size !== preservados.length ||
+      preservados.some((registro) => !isDeepStrictEqual(registro, mapa.get(registro[id])))) {
+      throw new Error(`A ação ${acao} alterou registros de outro atendimento.`);
     }
   };
 
@@ -1277,7 +1282,7 @@ export function validarTransicao(
     );
     for (const [ticketId, ticket] of ticketsAntes) {
       const depois = ticketsDepois.get(ticketId);
-      if (!depois || serializar(ticket) !== serializar(depois)) {
+      if (!depois || !isDeepStrictEqual(ticket, depois)) {
         throw new Error("Enviar pedido não pode alterar fichas existentes.");
       }
     }
@@ -1819,17 +1824,10 @@ export function validarTransicao(
     ) {
       throw new Error("Encerramento financeiro do atendimento inválido.");
     }
-    const semAtendimento = <T extends { atendimento_id: string }>(registros: T[]) =>
-      registros.filter(
-        (registro) => registro.atendimento_id !== fechamento.atendimento_id,
-      );
+    validarForaDoAtendimento(anterior.pessoas, proximo.pessoas, fechamento.atendimento_id, "pessoa_id");
+    validarForaDoAtendimento(anterior.itens, proximo.itens, fechamento.atendimento_id, "item_id");
+    validarForaDoAtendimento(anterior.tickets, proximo.tickets, fechamento.atendimento_id, "ticket_id");
     if (
-      serializar(semAtendimento(anterior.pessoas)) !==
-        serializar(semAtendimento(proximo.pessoas)) ||
-      serializar(semAtendimento(anterior.itens)) !==
-        serializar(semAtendimento(proximo.itens)) ||
-      serializar(semAtendimento(anterior.tickets)) !==
-        serializar(semAtendimento(proximo.tickets)) ||
       proximo.pessoas.some(
         (registro) => registro.atendimento_id === fechamento.atendimento_id,
       ) ||
@@ -1889,7 +1887,7 @@ export function validarTransicao(
     const mesaAntes = mesaId !== null ? mapaAnterior.get(mesaId) : null;
     const mesaDepois = mesaId !== null ? mapaProximo.get(mesaId) : null;
     const itensMesa = registro
-      ? anterior.itens.filter((item) => item.mesa_id === registro.mesa_id)
+      ? anterior.itens.filter((item) => item.atendimento_id === registro.atendimento_id)
       : [];
     if (
       encerramentosNovos.length !== 1 ||
@@ -1897,16 +1895,19 @@ export function validarTransicao(
       mesaId === null ||
       registro.balcao_id !== null ||
       !mesaAntes?.ativa ||
+      mesaAntes.atendimento_id !== registro.atendimento_id ||
       !mesaAntes.abertaEm ||
       !mesaDepois ||
       mesaDepois.status !== "livre" ||
       mesaDepois.ativa ||
+      (mesaDepois.atendimento_id !== null &&
+        mesaDepois.atendimento_id !== registro.atendimento_id) ||
       mesaDepois.abertaEm !== null ||
       mesaDepois.garcom_id !== null ||
       mesaDepois.contaSolicitada ||
       !mesaDepois.servicoIncluso ||
       itensMesa.some((item) => item.status !== "novo") ||
-      anterior.tickets.some((ticket) => ticket.mesa_id === registro.mesa_id) ||
+      anterior.tickets.some((ticket) => ticket.atendimento_id === registro.atendimento_id) ||
       registro.abertura_id !== `ab-m${registro.mesa_id}-${mesaAntes.abertaEm}` ||
       registro.aberta_em !== mesaAntes.abertaEm ||
       registro.desfeito_em !== null ||
@@ -1915,11 +1916,11 @@ export function validarTransicao(
     ) {
       throw new Error("Encerramento sem consumo inválido.");
     }
-    validarForaDaMesa(anterior.pessoas, proximo.pessoas, mesaId);
-    validarForaDaMesa(anterior.itens, proximo.itens, mesaId);
+    validarForaDoAtendimento(anterior.pessoas, proximo.pessoas, registro.atendimento_id, "pessoa_id");
+    validarForaDoAtendimento(anterior.itens, proximo.itens, registro.atendimento_id, "item_id");
     if (
-      proximo.pessoas.some((pessoa) => pessoa.mesa_id === registro.mesa_id) ||
-      proximo.itens.some((item) => item.mesa_id === registro.mesa_id)
+      proximo.pessoas.some((pessoa) => pessoa.atendimento_id === registro.atendimento_id) ||
+      proximo.itens.some((item) => item.atendimento_id === registro.atendimento_id)
     ) {
       throw new Error("Encerramento sem consumo deve limpar somente a mesa informada.");
     }
@@ -1959,13 +1960,14 @@ export function validarTransicao(
       !mesaDepois ||
       mesaDepois.status !== "ocupada" ||
       !mesaDepois.ativa ||
+      mesaDepois.atendimento_id !== antes.atendimento_id ||
       mesaDepois.abertaEm !== antes.aberta_em ||
       mesaDepois.contaSolicitada
     ) {
       throw new Error("Desfazer encerramento sem consumo inválido ou expirado.");
     }
-    validarForaDaMesa(anterior.pessoas, proximo.pessoas, mesaId);
-    validarForaDaMesa(anterior.itens, proximo.itens, mesaId);
+    validarForaDoAtendimento(anterior.pessoas, proximo.pessoas, antes.atendimento_id, "pessoa_id");
+    validarForaDoAtendimento(anterior.itens, proximo.itens, antes.atendimento_id, "item_id");
     const pessoasAntes = new Set(anterior.pessoas.map((pessoa) => pessoa.pessoa_id));
     const itensAntes = new Set(anterior.itens.map((item) => item.item_id));
     const pessoasRestauradas = proximo.pessoas.filter(
@@ -1973,10 +1975,15 @@ export function validarTransicao(
     );
     const itensRestaurados = proximo.itens.filter((item) => !itensAntes.has(item.item_id));
     if (
-      pessoasRestauradas.some((pessoa) => pessoa.mesa_id !== antes.mesa_id) ||
+      pessoasRestauradas.some(
+        (pessoa) => pessoa.mesa_id !== antes.mesa_id ||
+          pessoa.balcao_id !== null || pessoa.atendimento_id !== antes.atendimento_id,
+      ) ||
       itensRestaurados.some(
         (item) =>
           item.mesa_id !== antes.mesa_id ||
+          item.balcao_id !== null ||
+          item.atendimento_id !== antes.atendimento_id ||
           item.status !== "novo" ||
           item.pedido_id !== null ||
           item.enviado_em !== null,
@@ -2032,6 +2039,9 @@ export async function salvarEstado(
     leituraAnterior.cardapio.map((produto) => [produto.produto_id, produto]),
   );
   try {
+    if (!validarVinculosAlterados(anterior, estado)) {
+      throw new EstadoInvalidoError();
+    }
     for (const item of estado.itens) {
       const anteriorItem = anterior.itens.find(
         (registro) => registro.item_id === item.item_id,

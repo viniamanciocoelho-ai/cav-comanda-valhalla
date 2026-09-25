@@ -229,6 +229,7 @@ function StatusConexao() {
   const pendente = conectividade === "pendente";
   const offline = conectividade === "offline";
   const incerto = conectividade === "incerto";
+  const falhou = falhasOffline.length > 0;
   const texto = incerto
     ? "Aguardando confirmação"
     : offline
@@ -237,12 +238,14 @@ function StatusConexao() {
       ? acoesPendentes
         ? `Pendente · ${acoesPendentes} ${acoesPendentes === 1 ? "ação" : "ações"}`
         : "Salvando"
-      : "Sincronizado";
+      : falhou
+        ? "Gravação recusada"
+        : "Sincronizado";
 
   return (
     <section
       className={`mb-4 grid gap-2 rounded-md border px-3 py-2 text-[12px] ${
-        offline || incerto
+        offline || incerto || falhou
           ? "border-ember/60 bg-ember/10 text-parchment"
           : pendente
             ? "border-gold/60 bg-gold/10 text-parchment"

@@ -383,14 +383,14 @@ export function avaliarSemConsumoDe(
   funcionario: Funcionario,
 ): AvaliacaoSemConsumo {
   const mesa = dados.mesas.find((m) => m.mesa_id === mesa_id);
-  if (!mesa || !mesa.ativa || mesa.status === "livre" || !mesa.abertaEm) {
+  if (!mesa || !mesa.ativa || mesa.status === "livre" || !mesa.abertaEm || !mesa.atendimento_id) {
     return { elegivel: false, permitido: false, rascunhos: 0, impedimento: null };
   }
 
-  const itens = dados.itens.filter((i) => i.mesa_id === mesa_id);
+  const itens = dados.itens.filter((i) => i.atendimento_id === mesa.atendimento_id);
   const rascunhos = itens.filter((i) => i.status === "novo");
   const enviados = itens.length - rascunhos.length;
-  const fichas = dados.tickets.filter((t) => t.mesa_id === mesa_id).length;
+  const fichas = dados.tickets.filter((t) => t.atendimento_id === mesa.atendimento_id).length;
 
   let impedimento: string | null = null;
   if (enviados > 0 || fichas > 0) {
@@ -991,13 +991,23 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
   // ----------------------------------------------------------------- leitura
 
   const pessoasDaMesa = useCallback(
-    (mesa_id: number) => dados.pessoas.filter((p) => p.mesa_id === mesa_id),
-    [dados.pessoas],
+    (mesa_id: number) => {
+      const mesa = dados.mesas.find((registro) => registro.mesa_id === mesa_id);
+      return mesa?.ativa && mesa.atendimento_id
+        ? dados.pessoas.filter((pessoa) => pessoa.atendimento_id === mesa.atendimento_id)
+        : [];
+    },
+    [dados.mesas, dados.pessoas],
   );
 
   const itensDaMesa = useCallback(
-    (mesa_id: number) => dados.itens.filter((i) => i.mesa_id === mesa_id),
-    [dados.itens],
+    (mesa_id: number) => {
+      const mesa = dados.mesas.find((registro) => registro.mesa_id === mesa_id);
+      return mesa?.ativa && mesa.atendimento_id
+        ? dados.itens.filter((item) => item.atendimento_id === mesa.atendimento_id)
+        : [];
+    },
+    [dados.mesas, dados.itens],
   );
 
   const pessoasDoAtendimento = useCallback(
@@ -1058,19 +1068,34 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     [dados.balcoes, dados.mesas],
   );
 
+  const atendimentosAtivos = useMemo(() => {
+    const ids = new Set<string>();
+    for (const local of [...dados.mesas, ...dados.balcoes]) {
+      if (local.ativa && local.atendimento_id) ids.add(local.atendimento_id);
+    }
+    return ids;
+  }, [dados.mesas, dados.balcoes]);
+  const itensEmOperacao = useMemo(
+    () => dados.itens.filter((item) => atendimentosAtivos.has(item.atendimento_id)),
+    [dados.itens, atendimentosAtivos],
+  );
+  const fichasEmOperacao = useMemo(
+    () => dados.tickets.filter((ticket) => atendimentosAtivos.has(ticket.atendimento_id)),
+    [dados.tickets, atendimentosAtivos],
+  );
   const filaAberta = useMemo(
-    () => dados.tickets.filter((t) => t.status === "enviado" || t.status === "preparando").length,
-    [dados.tickets],
+    () => fichasEmOperacao.filter((t) => t.status === "enviado" || t.status === "preparando").length,
+    [fichasEmOperacao],
   );
 
   const prontosParaEntrega = useMemo(
-    () => dados.itens.filter((i) => i.status === "pronto").length,
-    [dados.itens],
+    () => itensEmOperacao.filter((i) => i.status === "pronto").length,
+    [itensEmOperacao],
   );
 
   const cancelamentosPendentes = useMemo(
-    () => dados.itens.filter((i) => i.status === "cancelamento_solicitado"),
-    [dados.itens],
+    () => itensEmOperacao.filter((i) => i.status === "cancelamento_solicitado"),
+    [itensEmOperacao],
   );
 
   const contasEmAberto = useMemo(() => {
@@ -1117,10 +1142,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
                 totalFixo: 0,
                 contaSolicitada: false,
                 servicoIncluso: true,
-                garcom_id:
-                  funcionarioAtivo.funcionario_perfil === "garcom"
-                    ? funcionarioAtivo.funcionario_id
-                    : (m.garcom_id ?? funcionarioAtivo.funcionario_id),
+                garcom_id: funcionarioAtivo.funcionario_id,
               }
             : m,
         ),
@@ -2066,8 +2088,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
 
       const agora = new Date();
       const encerrada_em = agora.toISOString();
-      const rascunhos = atual.itens.filter((i) => i.mesa_id === mesa_id);
-      const pessoasDaAbertura = atual.pessoas.filter((p) => p.mesa_id === mesa_id);
+      const rascunhos = atual.itens.filter((i) => i.atendimento_id === mesa.atendimento_id);
+      const pessoasDaAbertura = atual.pessoas.filter((p) => p.atendimento_id === mesa.atendimento_id);
 
       const registro: EncerramentoSemConsumo = {
         organizacao_id: organizacaoId,
@@ -2114,6 +2136,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
                 ...m,
                 status: "livre",
                 ativa: false,
+                atendimento_id: null,
                 contaSolicitada: false,
                 abertaEm: null,
                 garcom_id: null,
@@ -2123,8 +2146,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
               }
             : m,
         ),
-        pessoas: prev.pessoas.filter((p) => p.mesa_id !== mesa_id),
-        itens: prev.itens.filter((i) => i.mesa_id !== mesa_id),
+        pessoas: prev.pessoas.filter((p) => p.atendimento_id !== mesa.atendimento_id),
+        itens: prev.itens.filter((i) => i.atendimento_id !== mesa.atendimento_id),
       }), "encerrar_sem_consumo");
 
       return { ok: true, registro };
@@ -2156,8 +2179,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const mexeram =
         !mesa ||
         mesa.ativa ||
-        atual.itens.some((i) => i.mesa_id === registro.mesa_id) ||
-        atual.pessoas.some((p) => p.mesa_id === registro.mesa_id);
+        atual.itens.some((i) => i.atendimento_id === registro.atendimento_id) ||
+        atual.pessoas.some((p) => p.atendimento_id === registro.atendimento_id);
       if (mexeram) return false;
 
       const desfeito_em = new Date().toISOString();
@@ -2305,8 +2328,8 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     mesas: dados.mesas,
     balcoes: dados.balcoes,
     pessoas: dados.pessoas,
-    itens: dados.itens,
-    tickets: dados.tickets,
+    itens: itensEmOperacao,
+    tickets: fichasEmOperacao,
     fechamentos: dados.fechamentos,
     encerramentosSemConsumo: dados.encerramentos,
     toasts,

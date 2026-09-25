@@ -730,3 +730,125 @@ test(
     });
   },
 );
+
+test("mesa com historico antigo abre, grava item novo e sinaliza recusa real", async ({ page }) => {
+  const erros = [];
+  page.on("pageerror", (erro) => erros.push(erro.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await entrarComoGerencia(page);
+
+  const db = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
+  try {
+    const livre = await db.execute({
+      sql: "SELECT status FROM mesas WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 15],
+    });
+    expect(livre.rows[0]?.status).toBe("livre");
+    await db.execute({
+      sql: "UPDATE mesas SET garcom_id = ? WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["f-operador-anterior", "valhalla", 15],
+    });
+    await db.execute({
+      sql: `INSERT INTO pessoas_da_comanda
+        (organizacao_id, pessoa_id, atendimento_id, mesa_id, balcao_id, nome)
+        VALUES (?, ?, ?, ?, NULL, ?)`,
+      args: ["valhalla", "p-antiga-ui", "mesa:15:legado", 15, "Pessoa historica ficticia"],
+    });
+    await db.execute({
+      sql: `INSERT INTO itens_pedido
+        (organizacao_id, item_id, pedido_id, atendimento_id, mesa_id, balcao_id,
+         pessoa_id, produto_id, nome, preco_centavos, quantidade, observacao,
+         destino_producao, status, status_anterior, funcionario_id, funcionario_nome,
+         funcionario_perfil, criado_em, enviado_em, atualizado_em)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        "valhalla", "i-antigo-ui", "pd-antigo-ui", "mesa:15:legado", 15,
+        "p-antiga-ui", "produto-antigo", "ITEM HISTORICO FICTICIO", 100, 1, "",
+        "bar", "enviado", "f-operador-anterior", "Operador anterior", "garcom",
+        "2026-09-01T10:00:00.000Z", "2026-09-01T10:00:00.000Z",
+        "2026-09-01T10:00:00.000Z",
+      ],
+    });
+    await db.execute({
+      sql: `INSERT INTO fichas_producao
+        (organizacao_id, ticket_id, pedido_id, atendimento_id, mesa_id, balcao_id,
+         destino_producao, status, linhas_json, item_ids_json, funcionario_id,
+         funcionario_nome, criado_em, enviado_em, atualizado_em)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        "valhalla", "t-antigo-ui", "pd-antigo-ui", "mesa:15:legado", 15,
+        "bar", "enviado", "[]", '["i-antigo-ui"]', "f-operador-anterior",
+        "Operador anterior", "2026-09-01T10:00:00.000Z", "2026-09-01T10:00:00.000Z",
+        "2026-09-01T10:00:00.000Z",
+      ],
+    });
+    const fichaInserida = await db.execute({
+      sql: "SELECT count(*) AS total FROM fichas_producao WHERE organizacao_id = ? AND ticket_id = ?",
+      args: ["valhalla", "t-antigo-ui"],
+    });
+    expect(Number(fichaInserida.rows[0]?.total)).toBe(1);
+  } finally {
+    db.close();
+  }
+
+  const leitura = page.waitForResponse((resposta) => resposta.url().includes("/api/rpc/comanda/estado"));
+  await page.reload();
+  expect((await leitura).status()).toBe(200);
+  await page.goto("/producao");
+  await expect(page.getByRole("heading", { name: "Fila de fichas" })).toBeVisible();
+  await expect(page.getByTestId("ficha-t-antigo-ui")).toHaveCount(0);
+
+  await page.goto("/garcom");
+  const abertura = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes('"abrir_mesa"'),
+  );
+  await page.getByTestId("abrir-15").click();
+  await expect(page.getByText("Abertura da Mesa 15 aguardando confirmação.")).toBeVisible();
+  expect((await abertura).status()).toBe(200);
+  await expect(page.getByTestId("adicionar-item")).toBeVisible();
+  await expect(page.getByText("0 pessoas", { exact: false })).toBeVisible();
+  await expect(page.locator('[data-testid^="item-"]')).toHaveCount(0);
+
+  await page.getByTestId("adicionar-item").click();
+  const inclusao = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes('"alterar_comanda"'),
+  );
+  await page.locator('[data-testid^="add-"]').first().click();
+  expect((await inclusao).status()).toBe(200);
+  await page.reload();
+  await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
+  await expect(page.getByText("ITEM HISTORICO FICTICIO")).toHaveCount(0);
+  expect(await contarItensDaMesa(15)).toBe(2);
+
+  await page.goto("/garcom");
+  await page.route("**/api/rpc/comanda/persistir", async (route) => {
+    const envelope = route.request().postDataJSON();
+    const entrada = envelope?.json ?? envelope;
+    if (entrada?.acao !== "abrir_mesa") return route.continue();
+    const invalida = {
+      ...entrada,
+      estado: {
+        ...entrada.estado,
+        mesas: entrada.estado.mesas.map((mesa) =>
+          mesa.mesa_id === 14 ? { ...mesa, garcom_id: "f-operador-errado" } : mesa,
+        ),
+      },
+    };
+    const corpo = envelope?.json ? { ...envelope, json: invalida } : invalida;
+    const resposta = await route.fetch({ postData: JSON.stringify(corpo) });
+    expect(resposta.status()).toBe(400);
+    await route.fulfill({ response: resposta });
+  });
+  const recusada = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes('"abrir_mesa"'),
+  );
+  await page.getByTestId("abrir-14").click();
+  await expect(page.getByText("Abertura da Mesa 14 aguardando confirmação.")).toBeVisible();
+  expect((await recusada).status()).toBe(400);
+  await expect(page.getByTestId("status-conexao")).toContainText("Gravação recusada");
+  await expect(page.getByTestId("abrir-mesa")).toBeVisible();
+  expect(erros).toEqual([]);
+});
