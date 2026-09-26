@@ -152,6 +152,72 @@ try {
       WHERE organizacao_id = ? AND ticket_id = ?`,
     args: [linhasLegadas, "valhalla", "t-legado"],
   });
+  await gerencia.comanda.funcionarioSalvar({
+    funcionarioId: "f-reabertura", nome: "Garcom de teste", perfil: "garcom", pin: "5274", ativo: true,
+  });
+  const sessaoGarcom = await publico.auth.login({ organizacao: "valhalla", pin: "5274" });
+  const garcom = createRouterClient(router, {
+    context: { headers: new Headers({ authorization: `Bearer ${sessaoGarcom.token}` }) },
+  });
+  for (const numero of [2, 5]) {
+    for (let vez = 1; vez <= 2; vez += 1) {
+      const antes = await garcom.comanda.estado();
+      const abertaEm = new Date().toISOString();
+      const atendimento_id = `at-mesa-${numero}-vez-${vez}`;
+      await garcom.comanda.persistir({
+        versao: antes.versao, acao: "abrir_mesa", entidadeId: String(numero),
+        estado: {
+          ...antes.estado,
+          mesas: antes.estado.mesas.map((mesa) => mesa.mesa_id === numero ? {
+            ...mesa, status: "ocupada" as const, ativa: true, atendimento_id,
+            abertaEm, garcom_id: sessaoGarcom.funcionario.funcionario_id,
+          } : mesa),
+        },
+      });
+      const aberta = await garcom.comanda.estado();
+      await garcom.comanda.persistir({
+        versao: aberta.versao, acao: "alterar_comanda", entidadeId: String(numero),
+        estado: { ...aberta.estado, itens: [...aberta.estado.itens, {
+          organizacao_id: "valhalla", item_id: `i-${numero}-${vez}`,
+          pedido_id: null, atendimento_id, mesa_id: numero, balcao_id: null,
+          pessoa_id: compartilhadoId(atendimento_id), produto_id: produto.produto_id,
+          name: produto.name, price: produto.price, quantidade: 1, observacao: "",
+          destino_producao: produto.destino_producao, status: "novo" as const,
+          funcionario_id: sessaoGarcom.funcionario.funcionario_id,
+          funcionario_nome: sessaoGarcom.funcionario.funcionario_nome,
+          funcionario_perfil: sessaoGarcom.funcionario.funcionario_perfil,
+          criado_em: new Date().toISOString(), enviado_em: null, atualizado_em: new Date().toISOString(),
+        }] },
+      });
+      const editada = await garcom.comanda.estado();
+      assert.equal(editada.estado.itens.filter((item) => item.atendimento_id === atendimento_id).length, 1);
+      await garcom.comanda.persistir({
+        versao: editada.versao, acao: "encerrar_sem_consumo", entidadeId: String(numero),
+        estado: {
+          ...editada.estado,
+          mesas: editada.estado.mesas.map((mesa) => mesa.mesa_id === numero ? {
+            ...mesa, status: "livre" as const, ativa: false, atendimento_id: null,
+            abertaEm: null, garcom_id: null,
+          } : mesa),
+          itens: editada.estado.itens.filter((item) => item.atendimento_id !== atendimento_id),
+          encerramentos: [...editada.estado.encerramentos, {
+            organizacao_id: "valhalla", encerramento_id: `sc-${numero}-${vez}`,
+            atendimento_id, mesa_id: numero, balcao_id: null,
+            abertura_id: `ab-m${numero}-${abertaEm}`, encerrada_sem_consumo: true,
+            motivo: "engano" as const, observacao: "", rascunhos_descartados: 1,
+            funcionario_id: sessaoGarcom.funcionario.funcionario_id,
+            funcionario_nome: sessaoGarcom.funcionario.funcionario_nome,
+            funcionario_perfil: sessaoGarcom.funcionario.funcionario_perfil,
+            aberta_em: abertaEm, encerrada_em: new Date().toISOString(),
+            duracao_segundos: 0, desfeito_em: null,
+          }],
+        },
+      });
+      const liberada = await garcom.comanda.estado();
+      assert.equal(liberada.estado.mesas.find((mesa) => mesa.mesa_id === numero)?.status, "livre");
+      assert.equal(liberada.estado.itens.some((item) => item.item_id === "i-legado"), true);
+    }
+  }
   const comChavesReordenadas = await gerencia.comanda.estado();
   await gerencia.comanda.persistir({
     versao: comChavesReordenadas.versao,

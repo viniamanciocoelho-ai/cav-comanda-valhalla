@@ -856,7 +856,6 @@ export function validarTransicao(
   acao: string,
   funcionariosAtivos: Funcionario[] = [funcionario],
 ) {
-  const serializar = (valor: unknown) => JSON.stringify(valor);
   const idsColecao = {
     mesas: "mesa_id",
     balcoes: "balcao_id",
@@ -1170,7 +1169,7 @@ export function validarTransicao(
         const registroDepois = mapaDepois.get(id);
         if (!registroDepois) throw new Error("Registro ausente após transferência.");
         if (registroAntes.atendimento_id !== origem.atendimento_id) {
-          if (serializar(registroAntes) !== serializar(registroDepois)) {
+          if (!isDeepStrictEqual(registroAntes, registroDepois)) {
             throw new Error("Transferência alterou outro atendimento.");
           }
           continue;
@@ -1180,7 +1179,7 @@ export function validarTransicao(
           mesa_id: destino.mesa_id,
           balcao_id: null,
         };
-        if (serializar(esperado) !== serializar(registroDepois)) {
+        if (!isDeepStrictEqual(esperado, registroDepois)) {
           throw new Error("Transferência alterou dados além do local do atendimento.");
         }
       }
@@ -1195,7 +1194,7 @@ export function validarTransicao(
     const pessoasDepois = new Map(proximo.pessoas.map((pessoa) => [pessoa.pessoa_id, pessoa]));
     for (const [pessoaId, pessoa] of pessoasAntes) {
       const depois = pessoasDepois.get(pessoaId);
-      if (!depois || serializar(pessoa) !== serializar(depois)) {
+      if (!depois || !isDeepStrictEqual(pessoa, depois)) {
         throw new Error("Alteração de comanda não pode remover ou editar pessoas.");
       }
     }
@@ -1217,7 +1216,7 @@ export function validarTransicao(
         }
         continue;
       }
-      if (serializar(itemAntes) === serializar(itemDepois)) continue;
+      if (isDeepStrictEqual(itemAntes, itemDepois)) continue;
       validarCamposComuns(
         [itemAntes] as unknown as Record<string, unknown>[],
         [itemDepois] as unknown as Record<string, unknown>[],
@@ -1471,7 +1470,7 @@ export function validarTransicao(
       !depois ||
       !["enviado", "preparando", "pronto"].includes(antes.status) ||
       depois.status !== "cancelamento_solicitado" ||
-      serializar(proximo.anteriores) !== serializar(anterioresEsperados)
+      !isDeepStrictEqual(proximo.anteriores, anterioresEsperados)
     ) {
       throw new Error("Solicitação de cancelamento inválida.");
     }
@@ -1484,7 +1483,7 @@ export function validarTransicao(
       const depois = mapaItensDepois.get(item.item_id);
       return (
         item.status === "cancelamento_solicitado" &&
-        (!depois || serializar(item) !== serializar(depois))
+        (!depois || !isDeepStrictEqual(item, depois))
       );
     });
     const itemAntes = candidatos[0];
@@ -1498,13 +1497,13 @@ export function validarTransicao(
       .filter((item) => item.item_id !== itemAntes.item_id)
       .every(
         (item) =>
-          serializar(item) === serializar(mapaItensDepois.get(item.item_id)),
+          isDeepStrictEqual(item, mapaItensDepois.get(item.item_id)),
       );
     const anterioresEsperados = { ...anterior.anteriores };
     delete anterioresEsperados[itemAntes.item_id];
     if (
       !itensInalterados ||
-      serializar(proximo.anteriores) !== serializar(anterioresEsperados)
+      !isDeepStrictEqual(proximo.anteriores, anterioresEsperados)
     ) {
       throw new Error("Decisão de cancelamento alterou itens ou histórico indevidos.");
     }
@@ -1524,7 +1523,7 @@ export function validarTransicao(
         ficha && ficha.status !== "entregue" ? ficha.status : statusAnterior;
       if (
         itemDepois.status !== restaurado ||
-        serializar(anterior.tickets) !== serializar(proximo.tickets)
+        !isDeepStrictEqual(anterior.tickets, proximo.tickets)
       ) {
         throw new Error("Recusa de cancelamento inválida.");
       }
@@ -1538,7 +1537,7 @@ export function validarTransicao(
       for (const ticketAntes of anterior.tickets) {
         const ticketDepois = ticketsDepois.get(ticketAntes.ticket_id);
         if (!ticketAntes.itemIds.includes(itemAntes.item_id)) {
-          if (!ticketDepois || serializar(ticketAntes) !== serializar(ticketDepois)) {
+          if (!ticketDepois || !isDeepStrictEqual(ticketAntes, ticketDepois)) {
             throw new Error("Cancelamento alterou ficha não relacionada.");
           }
           continue;
@@ -1570,7 +1569,7 @@ export function validarTransicao(
         };
         if (
           !ticketDepois ||
-          serializar(ticketDepois) !== serializar(esperado)
+          !isDeepStrictEqual(ticketDepois, esperado)
         ) {
           throw new Error("Ficha ficou inconsistente após autorizar cancelamento.");
         }
@@ -1591,10 +1590,10 @@ export function validarTransicao(
   const idsMesasAlteradas = new Set<number>();
   const idsBalcoesAlterados = new Set<number>();
   for (const id of new Set([...mapaAnterior.keys(), ...mapaProximo.keys()])) {
-    if (serializar(mapaAnterior.get(id)) !== serializar(mapaProximo.get(id))) idsMesasAlteradas.add(id);
+    if (!isDeepStrictEqual(mapaAnterior.get(id), mapaProximo.get(id))) idsMesasAlteradas.add(id);
   }
   for (const id of new Set([...mapaBalcoesAnterior.keys(), ...mapaBalcoesProximo.keys()])) {
-    if (serializar(mapaBalcoesAnterior.get(id)) !== serializar(mapaBalcoesProximo.get(id))) {
+    if (!isDeepStrictEqual(mapaBalcoesAnterior.get(id), mapaBalcoesProximo.get(id))) {
       idsBalcoesAlterados.add(id);
     }
   }
@@ -1612,7 +1611,7 @@ export function validarTransicao(
     );
     const chaves = new Set([...mapaAntes.keys(), ...mapaDepois.keys()]);
     for (const chave of chaves) {
-      if (serializar(mapaAntes.get(chave)) === serializar(mapaDepois.get(chave))) continue;
+      if (isDeepStrictEqual(mapaAntes.get(chave), mapaDepois.get(chave))) continue;
       const registro = mapaAntes.get(chave) ?? mapaDepois.get(chave);
       if (typeof registro?.mesa_id === "number") idsMesasAlteradas.add(registro.mesa_id);
       if (typeof registro?.balcao_id === "number") {
@@ -1790,7 +1789,7 @@ export function validarTransicao(
       const depois = proximo.fechamentos.find(
         (fechamento) => fechamento.fechamento_id === fechamentoId,
       );
-      if (!depois || serializar(registro) !== serializar(depois)) {
+      if (!depois || !isDeepStrictEqual(registro, depois)) {
         throw new Error("Fechamento não pode alterar registros financeiros anteriores.");
       }
     }
@@ -1850,7 +1849,7 @@ export function validarTransicao(
         ([itemId]) => !itensDoAtendimento.has(itemId),
       ),
     );
-    if (serializar(proximo.anteriores) !== serializar(anterioresEsperados)) {
+    if (!isDeepStrictEqual(proximo.anteriores, anterioresEsperados)) {
       throw new Error("Fechamento alterou histórico de cancelamento de outro atendimento.");
     }
   }
@@ -1878,7 +1877,7 @@ export function validarTransicao(
       const depois = proximo.encerramentos.find(
         (encerramento) => encerramento.encerramento_id === encerramentoId,
       );
-      if (!depois || serializar(registro) !== serializar(depois)) {
+      if (!depois || !isDeepStrictEqual(registro, depois)) {
         throw new Error("Encerramento sem consumo não pode alterar auditoria anterior.");
       }
     }
@@ -2018,7 +2017,7 @@ export function validarTransicao(
 }
 
 export class EstadoInvalidoError extends Error {
-  constructor() {
+  constructor(readonly etapa: "vinculos" | "produto" | "transicao") {
     super("Transição operacional inválida.");
     this.name = "EstadoInvalidoError";
   }
@@ -2038,34 +2037,34 @@ export async function salvarEstado(
   const cardapio = new Map(
     leituraAnterior.cardapio.map((produto) => [produto.produto_id, produto]),
   );
+  if (!validarVinculosAlterados(anterior, estado)) {
+    throw new EstadoInvalidoError("vinculos");
+  }
+  for (const item of estado.itens) {
+    const anteriorItem = anterior.itens.find(
+      (registro) => registro.item_id === item.item_id,
+    );
+    const produto = cardapio.get(item.produto_id);
+    if (
+      anteriorItem &&
+      (item.produto_id !== anteriorItem.produto_id ||
+        item.name !== anteriorItem.name ||
+        centavos(item.price) !== centavos(anteriorItem.price) ||
+        item.destino_producao !== anteriorItem.destino_producao)
+    ) {
+      throw new EstadoInvalidoError("produto");
+    }
+    if (
+      !anteriorItem &&
+      (!produto ||
+        item.name !== produto.name ||
+        centavos(item.price) !== centavos(produto.price) ||
+        item.destino_producao !== produto.destino_producao)
+    ) {
+      throw new EstadoInvalidoError("produto");
+    }
+  }
   try {
-    if (!validarVinculosAlterados(anterior, estado)) {
-      throw new EstadoInvalidoError();
-    }
-    for (const item of estado.itens) {
-      const anteriorItem = anterior.itens.find(
-        (registro) => registro.item_id === item.item_id,
-      );
-      const produto = cardapio.get(item.produto_id);
-      if (
-        anteriorItem &&
-        (item.produto_id !== anteriorItem.produto_id ||
-          item.name !== anteriorItem.name ||
-          centavos(item.price) !== centavos(anteriorItem.price) ||
-          item.destino_producao !== anteriorItem.destino_producao)
-      ) {
-        throw new EstadoInvalidoError();
-      }
-      if (
-        !anteriorItem &&
-        (!produto ||
-          item.name !== produto.name ||
-          centavos(item.price) !== centavos(produto.price) ||
-          item.destino_producao !== produto.destino_producao)
-      ) {
-        throw new EstadoInvalidoError();
-      }
-    }
     validarTransicao(
       anterior,
       estado,
@@ -2074,7 +2073,7 @@ export async function salvarEstado(
       leituraAnterior.funcionarios,
     );
   } catch {
-    throw new EstadoInvalidoError();
+    throw new EstadoInvalidoError("transicao");
   }
   const resultado = await db.transaction(async (tx) => {
     const proxima = esperado + 1;
