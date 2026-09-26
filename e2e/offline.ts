@@ -136,6 +136,16 @@ const conflitoRemoto: Dados = {
 };
 assert.equal(reaplicarAcao(conflitoRemoto, acao).conflitos.length, 1);
 
+const ordemDiferente: Dados = {
+  ...antes,
+  mesas: antes.mesas.map((mesa) => Object.fromEntries(
+    Object.entries(mesa).reverse(),
+  ) as typeof mesa),
+};
+const reaplicada = reaplicarAcao(ordemDiferente, acao);
+assert.deepEqual(reaplicada.conflitos, [], "a ordem das chaves nao cria conflito falso");
+assert.equal(reaplicada.estado.mesas[0]?.ativa, true);
+
 const pendenteComItem: Dados = {
   ...depois,
   itens: [

@@ -1,3 +1,4 @@
+import equal from "fast-deep-equal";
 import type { Dados } from "../components/comanda-provider";
 import {
   codigoDoErro,
@@ -56,7 +57,7 @@ export class ResultadoAlteracaoDesconhecidoError extends Error {
 }
 
 function mesmoEstado(a: Dados, b: Dados) {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return equal(a, b);
 }
 
 function resultadoIncerto(erro: unknown) {

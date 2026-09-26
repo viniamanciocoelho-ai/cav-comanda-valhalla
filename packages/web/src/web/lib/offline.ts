@@ -1,3 +1,4 @@
+import equal from "fast-deep-equal";
 import { compartilhadoId, ehCompartilhado } from "./operacao";
 import type {
   Balcao,
@@ -588,15 +589,22 @@ const colecoes: Colecao[] = [
   "encerramentos",
 ];
 
-function idDoRegistro(registro: object): string {
-  const id = Object.entries(registro).find(
-    ([chave]) => chave.endsWith("_id") && chave !== "organizacao_id",
-  );
-  return String(id?.[1] ?? JSON.stringify(registro));
+const chavesColecao: Record<Colecao, string> = {
+  mesas: "mesa_id",
+  balcoes: "balcao_id",
+  pessoas: "pessoa_id",
+  itens: "item_id",
+  tickets: "ticket_id",
+  fechamentos: "fechamento_id",
+  encerramentos: "encerramento_id",
+};
+
+function idDoRegistro(colecao: Colecao, registro: object): string {
+  return String((registro as Record<string, unknown>)[chavesColecao[colecao]]);
 }
 
 function mesmo(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return equal(a, b);
 }
 
 /**
@@ -621,9 +629,9 @@ export function reaplicarAcao(
   };
 
   for (const colecao of colecoes) {
-    const antes = new Map(acao.antes[colecao].map((registro) => [idDoRegistro(registro), registro]));
-    const depois = new Map(acao.depois[colecao].map((registro) => [idDoRegistro(registro), registro]));
-    const atual = new Map(resultado[colecao].map((registro) => [idDoRegistro(registro), registro]));
+    const antes = new Map(acao.antes[colecao].map((registro) => [idDoRegistro(colecao, registro), registro]));
+    const depois = new Map(acao.depois[colecao].map((registro) => [idDoRegistro(colecao, registro), registro]));
+    const atual = new Map(resultado[colecao].map((registro) => [idDoRegistro(colecao, registro), registro]));
     const ids = new Set([...antes.keys(), ...depois.keys()]);
 
     for (const id of ids) {
@@ -676,8 +684,8 @@ export function nomesDosItensAlterados(acao: Pick<FilaOfflineItem, "antes" | "de
   if (nomes.size) return Array.from(nomes);
   const mesas = new Set<number>();
   for (const mesa of [...acao.antes.mesas, ...acao.depois.mesas]) {
-    if (JSON.stringify(acao.antes.mesas.find((item) => item.mesa_id === mesa.mesa_id)) !==
-      JSON.stringify(acao.depois.mesas.find((item) => item.mesa_id === mesa.mesa_id))) {
+    if (!mesmo(acao.antes.mesas.find((item) => item.mesa_id === mesa.mesa_id),
+      acao.depois.mesas.find((item) => item.mesa_id === mesa.mesa_id))) {
       mesas.add(mesa.mesa_id);
     }
   }
