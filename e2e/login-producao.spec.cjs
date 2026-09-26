@@ -42,6 +42,7 @@ test.beforeAll(async () => {
       CAV_BOOTSTRAP_PIN_GERENCIA: "8462",
       CAV_ALLOWED_ORIGINS: baseURL,
       CAV_TIMEZONE: "America/Cuiaba",
+      RENDER_GIT_COMMIT: "0123456789abcdef0123456789abcdef01234567",
     },
     stdio: "pipe",
   });
@@ -102,6 +103,10 @@ test("login por PIN renderiza a tela principal sem erros e permite sair", async 
   const saude = await page.request.get(`${baseURL}/api/saude`);
   expect(saude.status()).toBe(200);
   expect(await saude.json()).toEqual({ ok: true });
+  const versao = await page.request.get(`${baseURL}/api/health/ready`);
+  expect(versao.status()).toBe(200);
+  expect(versao.headers()["cache-control"]).toContain("no-store");
+  expect((await versao.json()).commit).toBe("0123456789abcdef0123456789abcdef01234567");
 
   await page.goto("/");
   await expect(page.getByTestId("login-pin")).toBeVisible();

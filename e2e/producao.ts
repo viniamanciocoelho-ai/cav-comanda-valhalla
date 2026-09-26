@@ -67,7 +67,11 @@ assert.equal(
 );
 
 await prepararBancoTeste("producao");
-const { verificarSaude } = await import("../packages/web/src/api/lib/health");
+const { commitEmExecucao, verificarSaude } = await import("../packages/web/src/api/lib/health");
+assert.equal(commitEmExecucao(""), null);
+assert.equal(commitEmExecucao("f8e573a"), null);
+assert.equal(commitEmExecucao("0123456789ABCDEF0123456789ABCDEF01234567"),
+  "0123456789abcdef0123456789abcdef01234567");
 const saudavel = await verificarSaude(async () => ({ ok: true }));
 assert.equal(saudavel.statusHttp, 200);
 assert.equal(saudavel.corpo.database, "ok");

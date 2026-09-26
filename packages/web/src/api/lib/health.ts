@@ -7,6 +7,11 @@ export interface SaudeAplicacao {
   app: "ok";
   database: "ok" | "indisponivel";
   timestamp: string;
+  commit: string | null;
+}
+
+export function commitEmExecucao(valor = process.env.RENDER_GIT_COMMIT): string | null {
+  return valor && /^[a-f0-9]{40}$/i.test(valor) ? valor.toLowerCase() : null;
 }
 
 export async function verificarSaude(
@@ -21,6 +26,7 @@ export async function verificarSaude(
         app: "ok",
         database: "ok",
         timestamp: new Date().toISOString(),
+        commit: commitEmExecucao(),
       },
     };
   } catch {
@@ -31,6 +37,7 @@ export async function verificarSaude(
         app: "ok",
         database: "indisponivel",
         timestamp: new Date().toISOString(),
+        commit: commitEmExecucao(),
       },
     };
   }

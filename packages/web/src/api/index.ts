@@ -29,6 +29,7 @@ const app = createApp(router);
 // register here with full paths, e.g. app.post("/api/webhooks/example", ...)
 app.get("/api/health/ready", async (context) => {
   const saude = await verificarSaude();
+  context.header("Cache-Control", "no-store");
   return context.json(saude.corpo, saude.statusHttp);
 });
 app.get("/api/saude", async (context) => {

@@ -200,6 +200,7 @@ export const persistir = autenticado
           acao: input.acao,
           etapa: erro instanceof EstadoInvalidoError ? "validacao" : "gravacao",
           codigo: erro instanceof EstadoInvalidoError ? "BAD_REQUEST" : "INTERNAL_SERVER_ERROR",
+          motivo: erro instanceof EstadoInvalidoError ? erro.etapa : "banco",
           duracaoMs: Math.round(performance.now() - inicio),
         });
       }
