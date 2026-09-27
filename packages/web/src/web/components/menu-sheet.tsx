@@ -102,12 +102,6 @@ export function MenuSheet({
       return;
     }
     setAdicionados((n) => n + quantidade);
-    notificar(
-      `${quantidade}× ${item.name} adicionado; aguardando confirmação para ${
-        destinoAtual === compartilhado ? "a mesa (compartilhado)" : nomeSelecionado
-      }${observacao.trim() ? ` · ${observacao.trim()}` : ""}.`,
-      "info",
-    );
   }
 
   function fechar() {

@@ -48,6 +48,7 @@ import {
   ConflitoAlteracaoError,
   ResultadoAlteracaoDesconhecidoError,
 } from "../lib/persistencia";
+import { entidadeIdDaOperacao, resumoFeedbackOperacao } from "../lib/feedback-operacao";
 import { useSessao } from "./sessao-provider";
 import type {
   ConfiguracaoImpressora,
@@ -76,6 +77,7 @@ export interface ToastMessage {
   id: number;
   text: string;
   tone: "info" | "sucesso" | "atencao";
+  operationId?: string;
 }
 
 export interface Dados {
@@ -667,6 +669,26 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     }
   }, [aplicarRemoto, consultarRemoto, organizacaoId]);
 
+  const atualizarFeedbackOperacao = useCallback((
+    registro: FilaOfflineItem,
+    estado: "pendente" | "confirmado" | "incerto" | "recusado",
+  ) => {
+    const resumo = resumoFeedbackOperacao(registro);
+    if (!resumo) return false;
+    const id = Date.now() + Math.random();
+    const tone: ToastMessage["tone"] = estado === "confirmado"
+      ? "sucesso"
+      : estado === "pendente" ? "info" : "atencao";
+    setToasts((atual) => [
+      ...atual.filter((toast) => toast.operationId !== registro.id).slice(-2),
+      { id, text: resumo[estado], tone, operationId: registro.id },
+    ]);
+    window.setTimeout(() => {
+      setToasts((atual) => atual.filter((toast) => toast.id !== id));
+    }, 6500);
+    return true;
+  }, []);
+
   const drenarFila = useCallback(async () => {
     if (drenandoFila.current || !filaOffline.current.length || !hidratado.current) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -711,6 +733,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           }
           setDados(local);
           espelho.current = local;
+          atualizarFeedbackOperacao(atual, "confirmado");
         } catch (erro) {
           if (erro instanceof ResultadoAlteracaoDesconhecidoError) {
             filaOffline.current = [
@@ -719,6 +742,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
             ];
             salvarFila(organizacaoId, filaOffline.current);
             setConectividade("incerto");
+            atualizarFeedbackOperacao(atual, "incerto");
             if (!atual.resultadoIncerto) {
               const texto = "A alteração está aguardando confirmação. Confira a comanda antes de repetir.";
               console.warn("comanda.persistir", {
@@ -770,10 +794,12 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
             etapa: "gravacao",
             codigo: codigoDoErro(erro) ?? "CONFLITO_LOCAL",
           });
-          setToasts((atualToasts) => [
-            ...atualToasts.filter((toast) => toast.text !== falha.mensagem).slice(-2),
-            { id: Date.now() + Math.random(), text: falha.mensagem, tone: "atencao" },
-          ]);
+          if (!atualizarFeedbackOperacao(atual, "recusado")) {
+            setToasts((atualToasts) => [
+              ...atualToasts.slice(-2),
+              { id: Date.now() + Math.random(), text: falha.mensagem, tone: "atencao" },
+            ]);
+          }
         } finally {
           escritasPendentes.current = Math.max(0, escritasPendentes.current - 1);
         }
@@ -781,7 +807,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     } finally {
       drenandoFila.current = false;
     }
-  }, [aplicarRemoto, organizacaoId]);
+  }, [aplicarRemoto, atualizarFeedbackOperacao, organizacaoId]);
 
   useEffect(() => {
     const snapshot = carregarSnapshot(organizacaoId);
@@ -849,13 +875,14 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         id: crypto.randomUUID(),
         organizacaoId,
         acao,
-        entidadeId: proximo.mesas.find((mesa) => mesa.status !== "livre")?.mesa_id.toString(),
         antes,
         depois: proximo,
         tentativas: 0,
         proximaTentativaEm: 0,
         criadoEm: new Date().toISOString(),
       };
+      registro.entidadeId = entidadeIdDaOperacao(registro);
+      atualizarFeedbackOperacao(registro, "pendente");
       if (eAcaoOffline(acao, funcionarioAtivo) || filaOffline.current.length) {
         filaOffline.current = [...filaOffline.current, registro];
         salvarFila(organizacaoId, filaOffline.current);
@@ -887,6 +914,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
             setDados(resultado.estado);
           }
           setConectividade(pendentesOnline.current.length ? "pendente" : "sincronizado");
+          atualizarFeedbackOperacao(registro, "confirmado");
         })
         .catch(async (erro) => {
           epocaPersistencia.current += 1;
@@ -932,14 +960,12 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
             etapa: incerto ? "confirmacao" : "gravacao",
             codigo: incerto ? "RESULTADO_DESCONHECIDO" : codigoDoErro(erro) ?? "CONFLITO_LOCAL",
           });
-          setToasts((atual) => [
-            ...atual.filter((toast) => toast.text !== texto).slice(-2),
-            {
-              id: Date.now() + Math.random(),
-              text: texto,
-              tone: "atencao",
-            },
-          ]);
+          if (!atualizarFeedbackOperacao(registro, incerto ? "incerto" : "recusado")) {
+            setToasts((atual) => [
+              ...atual.filter((toast) => toast.text !== texto).slice(-2),
+              { id: Date.now() + Math.random(), text: texto, tone: "atencao" },
+            ]);
+          }
           await carregarRemoto(true).catch(() => undefined);
           if (!incerto) void drenarFila();
         })
@@ -947,7 +973,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
           escritasPendentes.current = Math.max(0, escritasPendentes.current - 1);
         });
     },
-    [carregarRemoto, drenarFila, funcionarioAtivo, organizacaoId],
+    [atualizarFeedbackOperacao, carregarRemoto, drenarFila, funcionarioAtivo, organizacaoId],
   );
 
   const aplicar = useCallback((

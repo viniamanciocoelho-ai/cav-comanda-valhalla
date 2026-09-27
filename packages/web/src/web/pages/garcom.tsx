@@ -74,7 +74,6 @@ export default function GarcomPage() {
 
   function abrir(mesa_id: number) {
     abrirMesa(mesa_id);
-    notificar(`Abertura da Mesa ${mesaLabel(mesa_id)} aguardando confirmação.`, "info");
     navegar(`/mesa/${mesa_id}`);
   }
 
