@@ -279,8 +279,23 @@ async function abrirMesaSemNome(page, numero) {
     resposta.request().postData()?.includes("abrir_mesa"),
   );
   await page.getByTestId("abrir-mesa").click();
-  expect((await abertura).status()).toBe(200);
+  const resposta = await abertura;
+  expect(resposta.status()).toBe(200);
+  await expect(page.getByText(`Mesa ${String(numero).padStart(2, "0")} aberta e confirmada no servidor.`)).toBeVisible();
   await expect(page.getByTestId("adicionar-item")).toBeVisible();
+}
+
+async function encerrarMesaSemConsumo(page) {
+  await page.getByTestId("encerrar-sem-consumo").click();
+  await page.getByTestId("sem-consumo-motivo-engano").click();
+  const descartar = page.getByTestId("sem-consumo-descartar");
+  if (await descartar.count()) await descartar.check();
+  const encerramento = page.waitForResponse((resposta) =>
+    resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes('"encerrar_sem_consumo"'),
+  );
+  await page.getByTestId("sem-consumo-confirmar").click();
+  expect((await encerramento).status()).toBe(200);
 }
 
 async function contarItensDaMesa(numero) {
@@ -314,6 +329,7 @@ test("mesa sem nome recebe item compartilhado e aparece na segunda sessão", asy
   await page.locator('[data-testid^="add-"]').first().click();
   const respostaItem = await confirmacao;
   expect(respostaItem.status()).toBe(200);
+  await expect(page.getByText(/Adicionado: 1× .+ · Mesa 01\./)).toBeVisible();
   const segundaAdicao = page.waitForResponse((resposta) =>
     resposta.url().includes("/api/rpc/comanda/persistir") &&
     resposta.request().postData()?.includes("alterar_comanda"),
@@ -338,6 +354,41 @@ test("mesa sem nome recebe item compartilhado e aparece na segunda sessão", asy
     await outraSessao.close();
   }
   expect(erros).toEqual([]);
+});
+
+test("reabrir a mesma mesa duas vezes preserva somente o pedido da abertura atual", async ({ page }) => {
+  await entrarComoGerencia(page);
+  for (let abertura = 1; abertura <= 2; abertura += 1) {
+    await abrirMesaSemNome(page, 5);
+    await page.getByTestId("adicionar-item").click();
+    const inclusao = page.waitForResponse((resposta) =>
+      resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"alterar_comanda"'),
+    );
+    await page.locator('[data-testid^="add-"]').first().click();
+    expect((await inclusao).status()).toBe(200);
+    await expect(page.getByText(/Adicionado: 1× .+ · Mesa 05\./)).toBeVisible();
+    await page.getByTestId("concluir-cardapio").click();
+    await encerrarMesaSemConsumo(page);
+    expect(await contarItensDaMesa(5)).toBe(0);
+  }
+
+  const db = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
+  try {
+    const encerramentos = await db.execute({
+      sql: "SELECT count(*) AS total FROM encerramentos_sem_consumo WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 5],
+    });
+    expect(Number(encerramentos.rows[0]?.total)).toBe(2);
+    const mesa = await db.execute({
+      sql: "SELECT status, atendimento_id FROM mesas WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 5],
+    });
+    expect(mesa.rows[0]?.status).toBe("livre");
+    expect(mesa.rows[0]?.atendimento_id).toBeNull();
+  } finally {
+    db.close();
+  }
 });
 
 test("resposta perdida apos gravar item nao duplica pedido", async ({ page }) => {
@@ -809,8 +860,8 @@ test("mesa com historico antigo abre, grava item novo e sinaliza recusa real", a
     resposta.request().postData()?.includes('"abrir_mesa"'),
   );
   await page.getByTestId("abrir-15").click();
-  await expect(page.getByText("Abertura da Mesa 15 aguardando confirmação.")).toBeVisible();
   expect((await abertura).status()).toBe(200);
+  await expect(page.getByText("Mesa 15 aberta e confirmada no servidor.")).toBeVisible();
   await expect(page.getByTestId("adicionar-item")).toBeVisible();
   await expect(page.getByText("0 pessoas", { exact: false })).toBeVisible();
   await expect(page.locator('[data-testid^="item-"]')).toHaveCount(0);
@@ -851,8 +902,8 @@ test("mesa com historico antigo abre, grava item novo e sinaliza recusa real", a
     resposta.request().postData()?.includes('"abrir_mesa"'),
   );
   await page.getByTestId("abrir-14").click();
-  await expect(page.getByText("Abertura da Mesa 14 aguardando confirmação.")).toBeVisible();
   expect((await recusada).status()).toBe(400);
+  await expect(page.getByText("A abertura da Mesa 14 foi recusada. Confira o salão.")).toBeVisible();
   await expect(page.getByTestId("status-conexao")).toContainText("Gravação recusada");
   await expect(page.getByTestId("abrir-mesa")).toBeVisible();
   expect(erros).toEqual([]);

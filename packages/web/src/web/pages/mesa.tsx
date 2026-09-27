@@ -441,7 +441,6 @@ export default function MesaPage() {
                 variante="primaria"
                 onClick={() => {
                   abrirMesa(mesa_id);
-                  notificar(`Abertura da mesa ${mesaLabel(mesa_id)} aguardando confirmação.`, "info");
                 }}
                 data-testid="abrir-mesa"
               >

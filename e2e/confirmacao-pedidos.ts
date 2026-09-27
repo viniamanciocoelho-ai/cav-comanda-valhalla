@@ -5,6 +5,7 @@ import {
   ResultadoAlteracaoDesconhecidoError,
 } from "../packages/web/src/web/lib/persistencia";
 import { compartilhadoId } from "../packages/web/src/web/lib/operacao";
+import { entidadeIdDaOperacao, resumoFeedbackOperacao } from "../packages/web/src/web/lib/feedback-operacao";
 import type { Dados } from "../packages/web/src/web/components/comanda-provider";
 import { PIN_GERENCIA_TESTE, prepararBancoTeste } from "./test-database";
 
@@ -42,6 +43,37 @@ const garcom = createRouterClient(router, {
 });
 
 const inicial = await gerencia.comanda.estado();
+const mesaAlvoId = inicial.estado.mesas.at(-1)?.mesa_id;
+assert.ok(mesaAlvoId);
+const aberturaAlvo = {
+  ...inicial.estado,
+  mesas: inicial.estado.mesas.map((mesa) => mesa.mesa_id === mesaAlvoId
+    ? {
+        ...mesa,
+        atendimento_id: `at-confirmacao-m${mesaAlvoId}`,
+        status: "ocupada" as const,
+        ativa: true,
+        abertaEm: "2026-09-23T20:59:00.000Z",
+        garcom_id: sessaoGerencia.funcionario.funcionario_id,
+      }
+    : mesa),
+};
+const feedbackAbertura = {
+  id: "op-feedback-m16",
+  organizacaoId: inicial.organizacaoId,
+  acao: "abrir_mesa" as const,
+  antes: inicial.estado,
+  depois: aberturaAlvo,
+  tentativas: 0,
+  proximaTentativaEm: 0,
+  criadoEm: "2026-09-23T20:59:00.000Z",
+};
+assert.equal(entidadeIdDaOperacao(feedbackAbertura), String(mesaAlvoId));
+assert.match(
+  resumoFeedbackOperacao(feedbackAbertura)?.confirmado ?? "",
+  new RegExp(`Mesa ${String(mesaAlvoId).padStart(2, "0")}`),
+);
+
 const atendimentoId = "at-confirmacao-m1";
 const abertaEm = "2026-09-23T21:00:00.000Z";
 const aberta: Dados = {
@@ -124,6 +156,8 @@ function comItem(
   base: Dados,
   itemId: string,
   funcionario: typeof sessaoGerencia.funcionario,
+  mesaId = 1,
+  atendimento = atendimentoId,
 ): Dados {
   const agora = "2026-09-23T21:01:00.000Z";
   return {
@@ -134,10 +168,10 @@ function comItem(
         organizacao_id: "valhalla",
         item_id: itemId,
         pedido_id: null,
-        atendimento_id: atendimentoId,
-        mesa_id: 1,
+        atendimento_id: atendimento,
+        mesa_id: mesaId,
         balcao_id: null,
-        pessoa_id: compartilhadoId(atendimentoId),
+        pessoa_id: compartilhadoId(atendimento),
         produto_id: produto.produto_id,
         name: produto.name,
         price: produto.price,
@@ -155,6 +189,22 @@ function comItem(
     ],
   };
 }
+
+const itemFeedback = comItem(
+  aberturaAlvo,
+  "item-feedback-alvo",
+  sessaoGerencia.funcionario,
+  mesaAlvoId,
+  `at-confirmacao-m${mesaAlvoId}`,
+);
+const registroFeedbackItem = {
+  ...feedbackAbertura,
+  acao: "alterar_comanda" as const,
+  antes: aberturaAlvo,
+  depois: itemFeedback,
+};
+assert.equal(entidadeIdDaOperacao(registroFeedbackItem), String(mesaAlvoId));
+assert.match(resumoFeedbackOperacao(registroFeedbackItem)?.confirmado ?? "", /Mesa/);
 
 const itemGerencia = comItem(
   baseGerencia.estado,
