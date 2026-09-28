@@ -153,3 +153,26 @@ ou integrar alteracoes locais, compare-as e preserve-as. Nada nessa sequencia
 publica. No mesmo checkout local da entrega, nao importe bundle: basta
 `git status`, `git log` e o gate. Quintino publica pelo fluxo autorizado apos
 revisar a branch, o autodeploy e a validacao no ambiente dele.
+
+## Validacao local atualizada — 2026-09-28
+
+A versao declarada do projeto e Bun `1.3.14`. Em checkout limpo, instale
+dependencias e execute o gate completo sem carregar `.env`:
+
+```powershell
+bun install --frozen-lockfile --ignore-scripts
+bun e2e/verificar-confirmacao-pedidos.ts
+```
+
+O gate verifica Bun, bloqueia `DATABASE_URL` herdado e `.env` real, usa SQLite
+em `.tmp`, força typecheck/build do Turbo sem cache, chama o lint oficial e roda
+11 suites mais Playwright contra o bundle de producao. No Windows, o lint usa
+`packages/web/scripts/lint.ts` para executar os mesmos comandos do Runkit pelo Bun; os
+arquivos protegidos do template mantêm LF por `.gitattributes`.
+
+Na revisao de 2026-09-28, o gate passou com 15 testes Playwright. Isso valida
+somente os casos sinteticos listados no relatorio; nao prova a matriz completa
+das mesas ou o SHA servido pelo Render. Nao publicar/deployar enquanto o
+relatorio marcar R03, R04, R05, R07 ou R09 como incompletos. Antes de qualquer
+publicacao, conferir a branch/SHA remoto e o comportamento de auto-deploy do
+servico; nao inferir que um commit no GitHub foi ativado em producao.
