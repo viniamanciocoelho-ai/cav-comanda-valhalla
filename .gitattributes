@@ -1,0 +1,16 @@
+__ports.cjs text eol=lf
+packages/desktop/electron/__electron-env.d.ts text eol=lf
+packages/desktop/electron/__no-renderer.ts text eol=lf
+packages/mobile/__env.d.ts text eol=lf
+packages/mobile/components/__ErrorBoundary.tsx text eol=lf
+packages/mobile/lib/__analytics.ts text eol=lf
+packages/mobile/lib/__web-safe-area.ts text eol=lf
+packages/web/src/__server.ts text eol=lf
+packages/web/src/api/__core/app.ts text eol=lf
+packages/web/src/api/database/__client.ts text eol=lf
+packages/web/src/web/__main.tsx text eol=lf
+packages/web/src/web/__vite-env.d.ts text eol=lf
+packages/web/src/web/types/__analytics.d.ts text eol=lf
+packages/web/vite/__plugins/asset-optimizer-plugin.ts text eol=lf
+packages/web/vite/__plugins/hono-dev-plugin.ts text eol=lf
+packages/web/vite/__plugins/runable-analytics-plugin.ts text eol=lf

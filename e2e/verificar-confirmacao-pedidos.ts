@@ -1,5 +1,4 @@
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import { createRequire } from "node:module";
+import { readdirSync } from "node:fs";
 import path from "node:path";
 
 const raiz = path.resolve(import.meta.dir, "..");
@@ -46,30 +45,9 @@ function executar(nome: string, comando: string[]) {
   }
 }
 
-function binarioFixado(pacote: string) {
-  const runkit = realpathSync(path.join(raiz, "node_modules", "@runablehq", "runkit"));
-  const requireRunkit = createRequire(path.join(runkit, "dist", "bin", "runkit.js"));
-  const arquivo = requireRunkit.resolve(`${pacote}/package.json`);
-  const manifesto = JSON.parse(readFileSync(arquivo, "utf8")) as { bin: string | Record<string, string> };
-  const relativo = typeof manifesto.bin === "string" ? manifesto.bin : manifesto.bin[pacote];
-  if (!relativo || !existsSync(path.resolve(path.dirname(arquivo), relativo))) {
-    throw new Error(`Binario fixado de ${pacote} nao encontrado; rode bun install --frozen-lockfile.`);
-  }
-  return path.resolve(path.dirname(arquivo), relativo);
-}
-
-executar("typecheck", [bun, "run", "typecheck"]);
-executar("build", [bun, "run", "build"]);
-if (process.platform === "win32") {
-  executar("convencoes do runkit (Windows)", [
-    bun, binarioFixado("konsistent"), "check", "--config-package", "@runablehq/runkit",
-  ]);
-  executar("oxlint fixado (Windows)", [
-    bun, binarioFixado("oxlint"), ".", "--deny-warnings", "--no-error-on-unmatched-pattern",
-  ]);
-} else {
-  executar("runkit lint", [bun, "run", "lint"]);
-}
+executar("typecheck sem cache", [bun, "run", "typecheck", "--force"]);
+executar("build sem cache", [bun, "run", "build", "--force"]);
+executar("runkit lint", [bun, "run", "lint"]);
 for (const teste of [
   "bootstrap-seguro", "confirmacao-pedidos", "legado-operacional", "offline", "mesas-compartilhadas", "tenant-isolation",
   "security-regressao", "fase1-api", "sem-consumo", "recibo", "monetario",
