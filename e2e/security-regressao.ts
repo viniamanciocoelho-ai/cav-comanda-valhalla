@@ -65,6 +65,25 @@ const base: EstadoPersistido = {
   anteriores: {},
 };
 
+const rascunhoAlheio: EstadoPersistido = {
+  ...base,
+  itens: [{ ...item, status: "novo", pedido_id: null, enviado_em: null }],
+};
+assert.throws(
+  () => validarTransicao(rascunhoAlheio, {
+    ...rascunhoAlheio,
+    itens: [{ ...rascunhoAlheio.itens[0]!, quantidade: 2 }],
+  }, funcionarios[0]!, "alterar_comanda"),
+  /outro funcionário/,
+  "a gerência não altera a quantidade do rascunho lançado por outro funcionário",
+);
+assert.throws(
+  () => validarTransicao(rascunhoAlheio, { ...rascunhoAlheio, itens: [] },
+    funcionarios[0]!, "alterar_comanda"),
+  /outro funcionário/,
+  "a gerência não remove o rascunho de outro funcionário",
+);
+
 const perfil = (nome: Funcionario["funcionario_nome"]): Funcionario => {
   const funcionario = funcionarios.find((entrada) => entrada.funcionario_nome === nome);
   assert.ok(funcionario);

@@ -1221,9 +1221,15 @@ export function validarTransicao(
         if (itemAntes.status !== "novo") {
           throw new Error("Somente rascunhos podem ser removidos da comanda.");
         }
+        if (itemAntes.funcionario_id !== funcionario.funcionario_id) {
+          throw new Error("Rascunho de outro funcionário não pode ser removido.");
+        }
         continue;
       }
       if (isDeepStrictEqual(itemAntes, itemDepois)) continue;
+      if (itemAntes.funcionario_id !== funcionario.funcionario_id) {
+        throw new Error("Rascunho de outro funcionário não pode ser editado.");
+      }
       validarCamposComuns(
         [itemAntes] as unknown as Record<string, unknown>[],
         [itemDepois] as unknown as Record<string, unknown>[],

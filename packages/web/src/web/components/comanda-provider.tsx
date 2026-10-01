@@ -1308,10 +1308,12 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
       const obs = observacao.trim();
 
       aplicar((prev) => {
-        // Mesmo produto, mesma pessoa, mesma observacao e ainda nao enviado: soma quantidade.
+        // Rascunhos de outros funcionários mantêm lançamento e autoria próprios.
         const existente = prev.itens.find(
             (i) =>
               i.status === "novo" &&
+              i.funcionario_id === funcionarioAtivo.funcionario_id &&
+              i.quantidade + quantidade <= 20 &&
               i.atendimento_id === atendimento_id &&
               i.pessoa_id === pessoa_id &&
             i.produto_id === produto.produto_id &&
@@ -1381,6 +1383,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         if (
           !item ||
           item.status !== "novo" ||
+          item.funcionario_id !== funcionarioAtivo.funcionario_id ||
           !local ||
           local.contaSolicitada ||
           (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
@@ -1417,6 +1420,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         if (
           !item ||
           item.status !== "novo" ||
+          item.funcionario_id !== funcionarioAtivo.funcionario_id ||
           !local ||
           local.contaSolicitada ||
           (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
@@ -1448,6 +1452,7 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
         if (
           !item ||
           item.status !== "novo" ||
+          item.funcionario_id !== funcionarioAtivo.funcionario_id ||
           !local ||
           local.contaSolicitada ||
           (funcionarioAtivo.funcionario_perfil !== "gerencia" &&
