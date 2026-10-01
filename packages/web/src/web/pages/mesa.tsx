@@ -72,7 +72,8 @@ function LinhaItem({
 }) {
   const cor = itemStatusColor[item.status];
   const novo = item.status === "novo";
-  const podeLancar = (perfil === "garcom" || perfil === "gerencia") && item.funcionario_id === funcionarioId;
+  const podeLancar = perfil === "garcom" || perfil === "gerencia";
+  const podeEditarRascunho = podeLancar && item.funcionario_id === funcionarioId;
   const pedeCancelamento = item.status === "cancelamento_solicitado";
   // Uma entrega por clique: o duplo toque no celular nao registra duas vezes.
   const entrega = useAcaoUnica();
@@ -126,7 +127,7 @@ function LinhaItem({
           {money(item.price * item.quantidade)}
         </p>
 
-        {novo && podeLancar ? (
+        {novo && podeEditarRascunho ? (
           <div className="flex shrink-0 items-center gap-1">
             <IconAction
               label={`Diminuir ${item.name}`}

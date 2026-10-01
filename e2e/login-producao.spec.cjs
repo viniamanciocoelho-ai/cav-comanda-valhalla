@@ -155,12 +155,9 @@ test("login por PIN renderiza a tela principal sem erros e permite sair", async 
 });
 
 test("mesa livre com atendimento legado abre pela interface sem recusa", async ({ page }) => {
-  await page.goto("/");
-  await page.getByTestId("campo-pin").fill("8462");
-  await page.getByRole("button", { name: "Entrar" }).click();
-  await expect(page.getByTestId("login-pin")).toHaveCount(0);
   const db = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
   try {
+    await db.execute("PRAGMA busy_timeout = 5000");
     const atualizado = await db.execute({
       sql: "UPDATE mesas SET atendimento_id = ? WHERE organizacao_id = ? AND mesa_id = ? AND status = 'livre' AND ativa = 0",
       args: ["at-legado-ui-13", "valhalla", 13],
@@ -169,6 +166,10 @@ test("mesa livre com atendimento legado abre pela interface sem recusa", async (
   } finally {
     db.close();
   }
+  await page.goto("/");
+  await page.getByTestId("campo-pin").fill("8462");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("login-pin")).toHaveCount(0);
   await page.goto("/garcom");
   const resposta = page.waitForResponse((entrada) =>
     entrada.url().includes("/api/rpc/comanda/persistir") &&
@@ -221,6 +222,14 @@ test("agrupamento e botão mais preservam lotes e criam só a ficha nova", async
     const fichas = await db.execute({ sql: "SELECT COUNT(*) AS total FROM fichas_producao WHERE organizacao_id = ? AND mesa_id = ?",
       args: ["valhalla", 10] });
     expect(Number(fichas.rows[0]?.total)).toBe(1);
+    const segundoEnvio = page.waitForResponse((resposta) => resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"enviar_pedido"'));
+    await page.getByTestId("enviar-pedido").click();
+    expect((await segundoEnvio).status()).toBe(200);
+    const fichasDepois = await db.execute({ sql: "SELECT linhas_json FROM fichas_producao WHERE organizacao_id = ? AND mesa_id = ? ORDER BY criado_em, ticket_id",
+      args: ["valhalla", 10] });
+    expect(fichasDepois.rows.length).toBe(2);
+    expect(fichasDepois.rows.map((linha) => JSON.parse(String(linha.linhas_json))[0].qty).sort()).toEqual([1, 3]);
   } finally {
     db.close();
   }
@@ -529,6 +538,7 @@ test("falha antes de gravar preserva intencao sem reenviar sozinha", async ({ pa
   await page.getByTestId("adicionar-item").click();
   await page.locator('[data-testid^="add-"]').first().click();
   await expect(page.getByTestId("status-conexao")).toContainText("Aguardando confirmação");
+  await expect(page.getByTestId("aviso-item-adicionado")).toHaveCount(0);
   await page.waitForTimeout(3_500);
   expect(gravacoes).toBe(1);
   expect(await contarItensDaMesa(3)).toBe(0);
