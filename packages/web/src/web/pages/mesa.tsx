@@ -28,6 +28,7 @@ import { MenuSheet } from "../components/menu-sheet";
 import { SemConsumoSheet } from "../components/sem-consumo-sheet";
 import { Action, IconAction } from "../components/ui/action";
 import { RuneDivider, SectionHeading, StatusPill } from "../components/ui/pieces";
+import { agruparLancamentos } from "../lib/agrupamento";
 import { COMPARTILHADO, TAXA_SERVICO, compartilhadoId } from "../lib/operacao";
 import {
   desde,
@@ -37,6 +38,7 @@ import {
   itemStatusLabel,
   mesaLabel,
   money,
+  moneyCentavos,
   perfilNome,
 } from "../lib/format";
 import { useAcaoUnica } from "../lib/hooks";
@@ -53,6 +55,8 @@ function LinhaItem({
   onCancelar,
   onAutorizar,
   onRecusar,
+  funcionarioId,
+  embedded = false,
 }: {
   item: OrderItem;
   perfil: Perfil;
@@ -63,20 +67,23 @@ function LinhaItem({
   onCancelar: (item: OrderItem) => void;
   onAutorizar: (item: OrderItem) => void;
   onRecusar: (item: OrderItem) => void;
+  funcionarioId: string;
+  embedded?: boolean;
 }) {
   const cor = itemStatusColor[item.status];
   const novo = item.status === "novo";
-  const podeLancar = perfil === "garcom" || perfil === "gerencia";
+  const podeLancar = (perfil === "garcom" || perfil === "gerencia") && item.funcionario_id === funcionarioId;
   const pedeCancelamento = item.status === "cancelamento_solicitado";
   // Uma entrega por clique: o duplo toque no celular nao registra duas vezes.
   const entrega = useAcaoUnica();
 
   // O min-w-0 da <li> e obrigatorio: item de grid herda min-content e furaria a largura no celular.
+  const Container = embedded ? "div" : "li";
   return (
-    <li
-      className="vh-edge bg-surface border-line min-w-0 rounded-md border py-2.5 pr-2.5 pl-4"
+    <Container
+      className={embedded ? "border-line min-w-0 border-t py-2.5 pr-2.5 pl-4" : "vh-edge bg-surface border-line min-w-0 rounded-md border py-2.5 pr-2.5 pl-4"}
       style={{ "--vh-edge-color": cor } as CSSProperties}
-      data-testid={`item-${item.item_id}`}
+      data-testid={`${embedded ? "lote" : "item"}-${item.item_id}`}
     >
       <div className="flex items-start gap-3 md:items-center">
         <div className="min-w-0 flex-1">
@@ -90,7 +97,7 @@ function LinhaItem({
           {/* Autoria e horario por item: a producao e o caixa precisam saber quem lancou e quando. */}
           <p className="text-muted mt-0.5 text-[12px]">
             {item.funcionario_nome} ({perfilNome[item.funcionario_perfil]}) ·{" "}
-            {novo ? `lançado ${hora(item.criado_em)}` : `enviado ${hora(item.enviado_em)}`}
+            lançado {hora(item.criado_em)}
           </p>
           {item.observacao ? (
             <p className="text-gold mt-1 text-[12px] leading-snug">Obs.: {item.observacao}</p>
@@ -127,13 +134,6 @@ function LinhaItem({
               data-testid={`menos-${item.item_id}`}
             >
               <Minus className="size-4" />
-            </IconAction>
-            <IconAction
-              label={`Aumentar ${item.name}`}
-              onClick={() => onQuantidade(item, 1)}
-              data-testid={`mais-${item.item_id}`}
-            >
-              <Plus className="size-4" />
             </IconAction>
             <IconAction
               label={`Remover ${item.name}`}
@@ -195,7 +195,7 @@ function LinhaItem({
           ) : null}
         </div>
       ) : null}
-    </li>
+    </Container>
   );
 }
 
@@ -204,6 +204,8 @@ export default function MesaPage() {
   const [, navegar] = useLocation();
   const {
     perfilAtivo,
+    funcionarioAtivo,
+    cardapio,
     mesas,
     pessoasDaMesa,
     itensDaMesa,
@@ -211,6 +213,7 @@ export default function MesaPage() {
     resumo,
     abrirMesa,
     adicionarPessoa,
+    adicionarItem,
     alterarQuantidade,
     removerItem,
     enviarPedido,
@@ -280,7 +283,7 @@ export default function MesaPage() {
   }, [itens]);
 
   const visiveis = useMemo(
-    () => (aba === "todos" ? itens : itens.filter((item) => item.pessoa_id === aba)),
+    () => agruparLancamentos(aba === "todos" ? itens : itens.filter((item) => item.pessoa_id === aba)),
     [aba, itens],
   );
 
@@ -493,7 +496,7 @@ export default function MesaPage() {
                   ? "Comanda completa"
                   : `Consumo · ${aba === compartilhado ? COMPARTILHADO : nomeDaPessoa(aba)}`
               }
-              title={`${visiveis.length} ${visiveis.length === 1 ? "item" : "itens"}`}
+              title={`${visiveis.reduce((soma, grupo) => soma + grupo.quantidade, 0)} itens`}
               hint="Itens novos ainda não foram para a produção. Só saem quando você envia o pedido."
               action={
                 podeLancar ? (
@@ -511,35 +514,64 @@ export default function MesaPage() {
 
             {visiveis.length ? (
               <ul className="grid gap-2">
-                {visiveis.map((item) => (
-                  <LinhaItem
-                    key={item.item_id}
-                    item={item}
-                    perfil={perfilAtivo}
-                    pessoa={nomeDaPessoa(item.pessoa_id)}
-                    onQuantidade={(i, delta) => alterarQuantidade(i.item_id, delta)}
-                    onRemover={(i) => removerItem(i.item_id)}
-                    onEntregar={(i) => {
-                      marcarEntregue(i.item_id);
-                      notificar(`${i.name} marcado como entregue na mesa.`, "sucesso");
-                    }}
-                    onCancelar={(i) => {
-                      solicitarCancelamento(i.item_id);
-                      notificar(
-                        "Cancelamento pedido. A gerência autoriza antes de sair da conta.",
-                        "atencao",
-                      );
-                    }}
-                    onAutorizar={(i) => {
-                      autorizarCancelamento(i.item_id);
-                      notificar(`${i.name} cancelado e retirado da conta.`, "sucesso");
-                    }}
-                    onRecusar={(i) => {
-                      recusarCancelamento(i.item_id);
-                      notificar(`${i.name} mantido na conta.`, "info");
-                    }}
-                  />
-                ))}
+                {visiveis.map((grupo) => {
+                  const exemplar = grupo.itens[0]!;
+                  const produto = cardapio.find((registro) => registro.produto_id === exemplar.produto_id);
+                  return (
+                    <li key={grupo.chave} data-testid={`item-${exemplar.item_id}`}
+                      className="vh-edge bg-surface border-line min-w-0 rounded-md border"
+                      style={{ "--vh-edge-color": itemStatusColor[exemplar.status] } as CSSProperties}>
+                      <div className="flex min-w-0 items-center gap-2 pr-2 pl-4">
+                        <details className="min-w-0 flex-1">
+                          <summary className="flex min-h-14 cursor-pointer list-none items-center gap-2 py-2.5 [&::-webkit-details-marker]:hidden">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-parchment truncate text-[14px]">
+                                <span className="font-display vh-tabular text-gold mr-1.5">{grupo.quantidade}×</span>
+                                {exemplar.name}
+                              </p>
+                              <p className="text-muted text-[12px]">{nomeDaPessoa(exemplar.pessoa_id)} · {grupo.itens.length} {grupo.itens.length === 1 ? "lançamento" : "lançamentos"}</p>
+                              {exemplar.observacao ? <p className="text-gold truncate text-[12px]">Obs.: {exemplar.observacao}</p> : null}
+                            </div>
+                            <span className="font-display vh-tabular text-parchment shrink-0 text-[14px]">{moneyCentavos(grupo.subtotalCentavos)}</span>
+                          </summary>
+                          <div className="border-line border-t" data-testid={`detalhes-${exemplar.item_id}`}>
+                            {grupo.itens.map((item) => (
+                              <LinhaItem key={item.item_id} item={item} embedded perfil={perfilAtivo}
+                                funcionarioId={funcionarioAtivo.funcionario_id}
+                                pessoa={nomeDaPessoa(item.pessoa_id)}
+                                onQuantidade={(i, delta) => alterarQuantidade(i.item_id, delta)}
+                                onRemover={(i) => removerItem(i.item_id)}
+                                onEntregar={(i) => {
+                                  marcarEntregue(i.item_id);
+                                  notificar(`${i.name} marcado como entregue na mesa.`, "sucesso");
+                                }}
+                                onCancelar={(i) => {
+                                  solicitarCancelamento(i.item_id);
+                                  notificar("Cancelamento pedido. A gerência autoriza antes de sair da conta.", "atencao");
+                                }}
+                                onAutorizar={(i) => {
+                                  autorizarCancelamento(i.item_id);
+                                  notificar(`${i.name} cancelado e retirado da conta.`, "sucesso");
+                                }}
+                                onRecusar={(i) => {
+                                  recusarCancelamento(i.item_id);
+                                  notificar(`${i.name} mantido na conta.`, "info");
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </details>
+                        {podeLancar && produto ? (
+                          <IconAction label={`Adicionar ${exemplar.name}`} data-testid={`mais-${exemplar.item_id}`}
+                            onClick={() => adicionarItem({ mesa_id, pessoa_id: exemplar.pessoa_id,
+                              produto, observacao: exemplar.observacao })}>
+                            <Plus className="size-4" />
+                          </IconAction>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <div className="border-line text-muted rounded-md border border-dashed p-8 text-center text-[13px]">

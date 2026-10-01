@@ -180,6 +180,52 @@ test("mesa livre com atendimento legado abre pela interface sem recusa", async (
   await expect(page.getByText("O servidor recusou a alteração.")).toHaveCount(0);
 });
 
+test("agrupamento e botão mais preservam lotes e criam só a ficha nova", async ({ page }) => {
+  await entrarComoGerencia(page);
+  await abrirMesaSemNome(page, 10);
+  await page.getByTestId("adicionar-item").click();
+  const primeira = page.waitForResponse((resposta) => resposta.url().includes("/api/rpc/comanda/persistir") &&
+    resposta.request().postData()?.includes('"alterar_comanda"'));
+  await page.locator('[data-testid^="add-"]').first().click();
+  expect((await primeira).status()).toBe(200);
+  await page.getByTestId("concluir-cardapio").click();
+  const grupo = page.locator('[data-testid^="item-"]').first();
+  for (const quantidade of [2, 3]) {
+    const confirmado = page.waitForResponse((resposta) => resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"alterar_comanda"'));
+    await grupo.getByRole("button", { name: /^Adicionar / }).click();
+    expect((await confirmado).status()).toBe(200);
+    await expect(grupo.locator("summary")).toContainText(`${quantidade}×`);
+  }
+  await expect(page.locator('[data-testid^="item-"]')).toHaveCount(1);
+  const db = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
+  try {
+    const rascunho = await db.execute({ sql: "SELECT quantidade FROM itens_pedido WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 10] });
+    expect(rascunho.rows.length).toBe(1);
+    expect(Number(rascunho.rows[0]?.quantidade)).toBe(3);
+    const envio = page.waitForResponse((resposta) => resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"enviar_pedido"'));
+    await page.getByTestId("enviar-pedido").click();
+    expect((await envio).status()).toBe(200);
+    const segunda = page.waitForResponse((resposta) => resposta.url().includes("/api/rpc/comanda/persistir") &&
+      resposta.request().postData()?.includes('"alterar_comanda"'));
+    await grupo.getByRole("button", { name: /^Adicionar / }).click();
+    expect((await segunda).status()).toBe(200);
+    await expect(grupo.locator("summary")).toContainText("4×");
+    await grupo.locator("summary").click();
+    await expect(grupo.locator('[data-testid^="lote-"]')).toHaveCount(2);
+    const registros = await db.execute({ sql: "SELECT quantidade, funcionario_id FROM itens_pedido WHERE organizacao_id = ? AND mesa_id = ? ORDER BY criado_em",
+      args: ["valhalla", 10] });
+    expect(registros.rows.map((linha) => Number(linha.quantidade)).sort()).toEqual([1, 3]);
+    const fichas = await db.execute({ sql: "SELECT COUNT(*) AS total FROM fichas_producao WHERE organizacao_id = ? AND mesa_id = ?",
+      args: ["valhalla", 10] });
+    expect(Number(fichas.rows[0]?.total)).toBe(1);
+  } finally {
+    db.close();
+  }
+});
+
 test("snapshot da versão anterior é migrado sem tela preta nem perda do rascunho", async ({
   page,
 }) => {

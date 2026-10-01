@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { createRouterClient } from "../packages/web/node_modules/@orpc/server/dist/index.mjs";
+import { createClient } from "@libsql/client";
+import { agruparLancamentos } from "../packages/web/src/web/lib/agrupamento";
 import { PIN_GERENCIA_TESTE, prepararBancoTeste } from "./test-database";
 
-await prepararBancoTeste("mesas-compartilhadas");
+const arquivo = await prepararBancoTeste("mesas-compartilhadas");
 const { default: app, router } = await import("../packages/web/src/api");
 
 const publico = createRouterClient(router, {
@@ -216,6 +218,31 @@ await assert.rejects(
     }),
   (erro: { code?: string }) => erro.code === "BAD_REQUEST",
 );
+
+const antesSegundoAutor = await gerencia.comanda.estado();
+const segundoItem = { ...item, item_id: "i-m8-gerencia", pedido_id: null, status: "novo" as const,
+  funcionario_id: sessaoGerencia.funcionario.funcionario_id,
+  funcionario_nome: sessaoGerencia.funcionario.funcionario_nome,
+  funcionario_perfil: sessaoGerencia.funcionario.funcionario_perfil,
+  criado_em: new Date().toISOString(), enviado_em: null };
+await gerencia.comanda.persistir({ versao: antesSegundoAutor.versao, acao: "alterar_comanda",
+  entidadeId: "8", estado: { ...antesSegundoAutor.estado,
+    itens: [...antesSegundoAutor.estado.itens, segundoItem] } });
+const depoisDoisAutores = await dennis.comanda.estado();
+const grupos = agruparLancamentos(depoisDoisAutores.estado.itens.filter((registro) =>
+  registro.atendimento_id === "at-mesa-08"));
+assert.equal(grupos.length, 1);
+assert.equal(grupos[0]?.quantidade, 2);
+assert.deepEqual(new Set(grupos[0]?.itens.map((registro) => registro.funcionario_id)),
+  new Set([sessaoDennis.funcionario.funcionario_id, sessaoGerencia.funcionario.funcionario_id]));
+const banco = createClient({ url: `file:${arquivo.replaceAll("\\", "/")}` });
+try {
+  const linhas = await banco.execute({ sql: "SELECT item_id, funcionario_id FROM itens_pedido WHERE organizacao_id = ? AND atendimento_id = ?",
+    args: ["valhalla", "at-mesa-08"] });
+  assert.equal(linhas.rows.length, 2);
+} finally {
+  banco.close();
+}
 
 console.log(
   "Mesas compartilhadas: gerência abriu a Mesa 08, Dennis leu, lançou item e enviou pedido com sucesso.",
