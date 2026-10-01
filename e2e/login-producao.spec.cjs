@@ -154,6 +154,32 @@ test("login por PIN renderiza a tela principal sem erros e permite sair", async 
   expect(erros).toEqual([]);
 });
 
+test("mesa livre com atendimento legado abre pela interface sem recusa", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("campo-pin").fill("8462");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page.getByTestId("login-pin")).toHaveCount(0);
+  const db = createClient({ url: `file:${banco.replaceAll("\\", "/")}` });
+  try {
+    const atualizado = await db.execute({
+      sql: "UPDATE mesas SET atendimento_id = ? WHERE organizacao_id = ? AND mesa_id = ? AND status = 'livre' AND ativa = 0",
+      args: ["at-legado-ui-13", "valhalla", 13],
+    });
+    expect(atualizado.rowsAffected).toBe(1);
+  } finally {
+    db.close();
+  }
+  await page.goto("/garcom");
+  const resposta = page.waitForResponse((entrada) =>
+    entrada.url().includes("/api/rpc/comanda/persistir") &&
+    entrada.request().postData()?.includes('"abrir_mesa"'),
+  );
+  await page.getByTestId("abrir-13").click();
+  expect((await resposta).status()).toBe(200);
+  await expect(page.getByTestId("adicionar-item")).toBeVisible();
+  await expect(page.getByText("O servidor recusou a alteração.")).toHaveCount(0);
+});
+
 test("snapshot da versão anterior é migrado sem tela preta nem perda do rascunho", async ({
   page,
 }) => {

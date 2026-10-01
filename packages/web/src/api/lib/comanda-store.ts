@@ -368,7 +368,7 @@ async function gravarEstadoTx(
       estado.mesas.map((mesa) => ({
         organizacaoId,
         mesaId: mesa.mesa_id,
-        atendimentoId: mesa.atendimento_id,
+        atendimentoId: mesa.status === "livre" && !mesa.ativa ? null : mesa.atendimento_id,
         status: mesa.status,
         ativa: mesa.ativa,
         pessoasFixas: mesa.pessoasFixas,
@@ -385,7 +385,7 @@ async function gravarEstadoTx(
       estado.balcoes.map((balcao) => ({
         organizacaoId,
         balcaoId: balcao.balcao_id,
-        atendimentoId: balcao.atendimento_id,
+        atendimentoId: balcao.status === "livre" && !balcao.ativa ? null : balcao.atendimento_id,
         status: balcao.status,
         ativa: balcao.ativa,
         abertaEm: balcao.abertaEm,
@@ -1009,7 +1009,14 @@ export function validarTransicao(
       !depois ||
       antes.status !== "livre" ||
       antes.ativa ||
-      antes.atendimento_id !== null ||
+      (antes.atendimento_id !== null && (
+        antes.atendimento_id === depois.atendimento_id ||
+        anterior.mesas.some((mesa) => mesa.ativa && mesa.atendimento_id === antes.atendimento_id) ||
+        anterior.balcoes.some((balcao) => balcao.ativa && balcao.atendimento_id === antes.atendimento_id) ||
+        anterior.pessoas.some((pessoa) => pessoa.atendimento_id === antes.atendimento_id) ||
+        anterior.itens.some((item) => item.atendimento_id === antes.atendimento_id) ||
+        anterior.tickets.some((ticket) => ticket.atendimento_id === antes.atendimento_id)
+      )) ||
       depois.status !== "ocupada" ||
       !depois.ativa ||
       !depois.atendimento_id ||
@@ -1899,8 +1906,7 @@ export function validarTransicao(
       !mesaDepois ||
       mesaDepois.status !== "livre" ||
       mesaDepois.ativa ||
-      (mesaDepois.atendimento_id !== null &&
-        mesaDepois.atendimento_id !== registro.atendimento_id) ||
+      mesaDepois.atendimento_id !== null ||
       mesaDepois.abertaEm !== null ||
       mesaDepois.garcom_id !== null ||
       mesaDepois.contaSolicitada ||
