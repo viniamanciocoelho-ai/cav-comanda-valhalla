@@ -226,6 +226,34 @@ test("agrupamento e botão mais preservam lotes e criam só a ficha nova", async
   }
 });
 
+test("aviso central só confirma após o servidor, fecha com toque e não bloqueia o próximo item", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await entrarComoGerencia(page);
+  await abrirMesaSemNome(page, 11);
+  await page.getByTestId("adicionar-item").click();
+  await page.route("**/api/rpc/comanda/persistir", async (route) => {
+    if (!route.request().postData()?.includes('"alterar_comanda"')) return route.continue();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    return route.continue();
+  });
+  const resposta = page.waitForResponse((entrada) => entrada.url().includes("/api/rpc/comanda/persistir") &&
+    entrada.request().postData()?.includes('"alterar_comanda"'));
+  await page.locator('[data-testid^="add-"]').first().click();
+  await expect(page.getByTestId("aviso-item-adicionado")).toHaveCount(0);
+  expect((await resposta).status()).toBe(200);
+  const aviso = page.getByTestId("aviso-item-adicionado");
+  await expect(aviso).toContainText(/Adicionado: 1× .+ · Mesa 11/);
+  await expect(aviso).toHaveCSS("animation-name", "none");
+  await aviso.click();
+  await expect(aviso).toHaveCount(0);
+  const outraResposta = page.waitForResponse((entrada) => entrada.url().includes("/api/rpc/comanda/persistir") &&
+    entrada.request().postData()?.includes('"alterar_comanda"'));
+  await page.locator('[data-testid^="add-"]').first().click();
+  expect((await outraResposta).status()).toBe(200);
+  await expect(aviso).toContainText(/Adicionado: 1× .+ · Mesa 11/);
+  await expect(aviso).toHaveCount(0, { timeout: 3000 });
+});
+
 test("snapshot da versão anterior é migrado sem tela preta nem perda do rascunho", async ({
   page,
 }) => {
@@ -976,6 +1004,7 @@ test("mesa com historico antigo abre, grava item novo e sinaliza recusa real", a
   await page.getByTestId("abrir-14").click();
   expect((await recusada).status()).toBe(400);
   await expect(page.getByText("A abertura da Mesa 14 foi recusada. Confira o salão.")).toBeVisible();
+  await expect(page.getByTestId("aviso-item-adicionado")).toHaveCount(0);
   await expect(page.getByTestId("status-conexao")).toContainText("Gravação recusada");
   await expect(page.getByTestId("abrir-mesa")).toBeVisible();
   expect(erros).toEqual([]);

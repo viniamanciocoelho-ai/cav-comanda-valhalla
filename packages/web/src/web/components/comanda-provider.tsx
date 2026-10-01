@@ -78,6 +78,7 @@ export interface ToastMessage {
   text: string;
   tone: "info" | "sucesso" | "atencao";
   operationId?: string;
+  destaque?: boolean;
 }
 
 export interface Dados {
@@ -679,13 +680,14 @@ export function ComandaProvider({ children }: { children: React.ReactNode }) {
     const tone: ToastMessage["tone"] = estado === "confirmado"
       ? "sucesso"
       : estado === "pendente" ? "info" : "atencao";
+    const destaque = estado === "confirmado" && resumo.confirmado.startsWith("Adicionado:");
     setToasts((atual) => [
-      ...atual.filter((toast) => toast.operationId !== registro.id).slice(-2),
-      { id, text: resumo[estado], tone, operationId: registro.id },
+      ...atual.filter((toast) => toast.operationId !== registro.id && !(destaque && toast.destaque)).slice(-2),
+      { id, text: resumo[estado], tone, operationId: registro.id, destaque },
     ]);
     window.setTimeout(() => {
       setToasts((atual) => atual.filter((toast) => toast.id !== id));
-    }, 6500);
+    }, destaque ? 1500 : 6500);
     return true;
   }, []);
 
